@@ -14,12 +14,16 @@ export default function RecommendPage() {
   const [candidates, setCandidates] = useState<StockInput[]>([]);
   const [resultText, setResultText] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [chatHistory, setChatHistory] = useState<{role: string, content: string}[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatting, setIsChatting] = useState(false);
 
   const startEngine = async () => {
     setPhase("screening");
     setProgressMsg(`Scanning entire universe (${UNIVERSE.length} stocks)...`);
     setErrorMsg("");
     setResultText("");
+    setChatHistory([]);
 
     try {
       // 1. Zero-cost Hard Screening
@@ -79,6 +83,61 @@ export default function RecommendPage() {
         err instanceof Error ? err.message : "An unknown error occurred"
       );
       setPhase("done");
+    }
+  };
+
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isChatting) return;
+
+    const userMessage = chatInput.trim();
+    setChatInput("");
+    setChatHistory((prev) => [...prev, { role: "user", content: userMessage }]);
+    setIsChatting(true);
+
+    try {
+      const res = await fetch("/api/recommend/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidates,
+          parsedPick: parsed,
+          chatHistory,
+          userMessage,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Chat API failed");
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response body");
+      const decoder = new TextDecoder("utf-8");
+
+      let aiResponse = "";
+      setChatHistory((prev) => [...prev, { role: "assistant", content: "" }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        aiResponse += chunk;
+
+        setChatHistory((prev) => {
+          const newHistory = [...prev];
+          newHistory[newHistory.length - 1].content = aiResponse;
+          return newHistory;
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setChatHistory((prev) => [
+        ...prev,
+        { role: "assistant", content: "통신 오류가 발생했습니다. 다시 시도해주세요." },
+      ]);
+    } finally {
+      setIsChatting(false);
     }
   };
 
@@ -249,6 +308,66 @@ export default function RecommendPage() {
                   </div>
                 </div>
               )}
+
+              {/* Interactive Debate Section */}
+              <div className="mt-12 pt-8 border-t border-indigo-900/50">
+                <h3 className="text-lg font-bold text-amber-500 mb-6 flex items-center gap-2">
+                  <span>💬</span> 위원장과 심층 토론하기
+                </h3>
+                
+                <div className="space-y-4 mb-6">
+                  {chatHistory.map((msg, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div 
+                        className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm leading-relaxed ${
+                          msg.role === "user" 
+                            ? "bg-amber-600/90 text-white rounded-br-sm" 
+                            : "bg-gray-800 border border-gray-700 text-gray-200 rounded-bl-sm"
+                        }`}
+                      >
+                        {msg.role === "assistant" && (
+                          <div className="text-xs font-bold text-indigo-400 mb-1">
+                            의장 (Chairman)
+                          </div>
+                        )}
+                        <span className="whitespace-pre-wrap">{msg.content}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {isChatting && (
+                    <div className="flex justify-start">
+                      <div className="bg-gray-800 border border-gray-700 rounded-2xl rounded-bl-sm px-5 py-4">
+                        <div className="flex gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <div className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <div className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <form onSubmit={handleChatSubmit} className="relative">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="예: 왜 하이닉스 대신 이걸 골랐나요? 가장 큰 리스크는 뭔가요?"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-4 pr-32 py-4 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    disabled={isChatting}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isChatting || !chatInput.trim()}
+                    className="absolute right-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg px-6 transition-colors"
+                  >
+                    질문하기
+                  </button>
+                </form>
+              </div>
             </div>
           ) : (
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
