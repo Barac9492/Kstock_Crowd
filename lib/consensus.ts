@@ -1,10 +1,50 @@
-import { AgentOutput, StockInput, ConsensusResult } from "./types";
+import { AgentOutput, StockInput, ConsensusResult, JudgeVerdict } from "./types";
 
 export function computeConsensus(
   outputs: AgentOutput[],
   stock: StockInput,
-  weights?: Record<string, number>
+  weights?: Record<string, number>,
+  verdict?: JudgeVerdict
 ): ConsensusResult {
+  // If judge verdict is available, use it directly
+  if (verdict) {
+    const sp = verdict.probability;
+
+    // Still compute MIP for alpha gap
+    const range = stock.highTargetPrice - stock.lowTargetPrice;
+    const upside = stock.avgTargetPrice - stock.currentPrice;
+    const rawMip = range > 0 ? (upside / range) * 60 + 20 : 50;
+    const totalRatings =
+      stock.buyRatings + stock.holdRatings + stock.sellRatings;
+    const buyRatio = totalRatings > 0 ? stock.buyRatings / totalRatings : 0.5;
+    const mip = Math.round(
+      Math.max(10, Math.min(90, rawMip + (buyRatio - 0.5) * 20))
+    );
+
+    const alphaGap = sp - mip;
+
+    let takeProfitPrice: number | undefined = undefined;
+    let stopLossPrice: number | undefined = undefined;
+
+    if (verdict.signal === "BUY" && stock.currentPrice) {
+      const targetUpsidePct = Math.min(30, Math.max(10, alphaGap));
+      takeProfitPrice = Math.round(stock.currentPrice * (1 + targetUpsidePct / 100));
+      const slDistance = (takeProfitPrice - stock.currentPrice) / 2;
+      stopLossPrice = Math.round(stock.currentPrice - slDistance);
+    }
+
+    return {
+      sp,
+      mip,
+      alphaGap,
+      conviction: verdict.confidence,
+      signal: verdict.signal,
+      takeProfitPrice,
+      stopLossPrice,
+    };
+  }
+
+  // Fallback: original averaging logic
   const probs = outputs.map((o) => o.probability);
 
   // Weighted or simple average for Swarm Probability

@@ -10,13 +10,26 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const outputs = await runSwarm(stock, (output) => {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "agent", output })}\n\n`)
-          );
-        });
+        const result = await runSwarm(
+          stock,
+          (output) => {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "agent", output })}\n\n`)
+            );
+          },
+          (debate) => {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "debate", output: debate })}\n\n`)
+            );
+          },
+          (verdict) => {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "verdict", output: verdict })}\n\n`)
+            );
+          }
+        );
 
-        const consensus = computeConsensus(outputs, stock);
+        const consensus = computeConsensus(result.phase1, stock, undefined, result.verdict);
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: "consensus", consensus })}\n\n`)
         );

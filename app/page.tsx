@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { StockInput, AgentOutput, ConsensusResult } from "@/lib/types";
+import { StockInput, AgentOutput, ConsensusResult, DebateOutput, JudgeVerdict } from "@/lib/types";
 import { saveSignal, getAllSignals } from "@/lib/storage";
 import { MarketRegimeData } from "@/lib/regime";
 import { computePerformance, computePositionSize, PerformanceMetrics } from "@/lib/analytics";
@@ -11,9 +11,86 @@ import StockForm from "@/components/StockForm";
 import AgentCard from "@/components/AgentCard";
 import ConsensusPanel from "@/components/ConsensusPanel";
 
+function getSignalBadge(signal: "bullish" | "bearish" | "neutral") {
+  switch (signal) {
+    case "bullish":
+      return "bg-green-900/40 text-green-400 border-green-800";
+    case "bearish":
+      return "bg-red-900/40 text-red-400 border-red-800";
+    case "neutral":
+      return "bg-yellow-900/40 text-yellow-400 border-yellow-800";
+  }
+}
+
+function DebateCard({ debate }: { debate: DebateOutput }) {
+  const isBull = debate.side === "bull";
+  return (
+    <div
+      className={`rounded-xl border p-5 ${
+        isBull
+          ? "bg-green-900/20 border-green-800"
+          : "bg-red-900/20 border-red-800"
+      } transition-all animate-in fade-in`}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-lg">{isBull ? "\u2191" : "\u2193"}</span>
+        <h3 className={`font-bold text-sm ${isBull ? "text-green-400" : "text-red-400"}`}>
+          {isBull ? "Bull Advocate" : "Bear Advocate"}
+        </h3>
+      </div>
+      <p className="text-gray-300 text-sm leading-relaxed mb-3">{debate.argument}</p>
+      {debate.keyPoints && (
+        <div className="border-t border-gray-700/50 pt-2 mt-2">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Key Points</div>
+          <p className="text-gray-400 text-xs leading-relaxed whitespace-pre-line">
+            {debate.keyPoints}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerdictCard({ verdict }: { verdict: JudgeVerdict }) {
+  const signalStyle =
+    verdict.signal === "BUY"
+      ? "bg-green-600 text-white"
+      : verdict.signal === "CAUTION"
+        ? "bg-red-600 text-white"
+        : "bg-yellow-600 text-black";
+
+  return (
+    <div className="rounded-xl border border-blue-800 bg-blue-900/20 p-6 transition-all animate-in fade-in">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="font-bold text-white text-lg">Judge Verdict</h3>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-3xl font-bold text-white">{verdict.probability}%</span>
+          <span className={`px-3 py-1 rounded-full font-bold text-sm ${signalStyle}`}>
+            {verdict.signal}
+          </span>
+        </div>
+      </div>
+      <p className="text-gray-300 text-sm leading-relaxed mb-3">{verdict.reasoning}</p>
+      <div className="flex items-center justify-between border-t border-blue-800/50 pt-3 mt-3">
+        <div>
+          <span className="text-xs text-gray-500 uppercase tracking-wider">Dissent: </span>
+          <span className="text-gray-400 text-xs">{verdict.dissent}</span>
+        </div>
+        <div className="text-xs text-blue-400 font-semibold">
+          Confidence {verdict.confidence}%
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [running, setRunning] = useState(false);
   const [agentOutputs, setAgentOutputs] = useState<AgentOutput[]>([]);
+  const [debates, setDebates] = useState<DebateOutput[]>([]);
+  const [verdict, setVerdict] = useState<JudgeVerdict | null>(null);
   const [consensus, setConsensus] = useState<ConsensusResult | null>(null);
   const [stock, setStock] = useState<StockInput | null>(null);
   const [saved, setSaved] = useState(false);
@@ -29,7 +106,7 @@ export default function Home() {
         if (data.regime) setRegime(data);
       })
       .catch(() => {});
-      
+
     // Compute historical metrics for position sizing
     setMetrics(computePerformance(getAllSignals()));
   }, []);
@@ -37,6 +114,8 @@ export default function Home() {
   const handleSubmit = async (input: StockInput) => {
     setRunning(true);
     setAgentOutputs([]);
+    setDebates([]);
+    setVerdict(null);
     setConsensus(null);
     setStock(input);
     setSaved(false);
@@ -98,6 +177,10 @@ export default function Home() {
 
           if (event.type === "agent") {
             setAgentOutputs((prev) => [...prev, event.output]);
+          } else if (event.type === "debate") {
+            setDebates((prev) => [...prev, event.output]);
+          } else if (event.type === "verdict") {
+            setVerdict(event.output);
           } else if (event.type === "consensus") {
             setConsensus(event.consensus);
           } else if (event.type === "error") {
@@ -116,13 +199,13 @@ export default function Home() {
 
   const handleSave = () => {
     if (!stock || !consensus || agentOutputs.length === 0) return;
-    const finalOutputs = agentOutputs.filter((o) => o.round === 2);
-    saveSignal({ stock, outputs: finalOutputs, consensus });
+    saveSignal({ stock, outputs: agentOutputs, consensus });
     setSaved(true);
   };
 
-  const round1 = agentOutputs.filter((o) => o.round === 1);
-  const round2 = agentOutputs.filter((o) => o.round === 2);
+  const phase1 = agentOutputs.filter((o) => o.round === 1);
+  const bullDebate = debates.find((d) => d.side === "bull");
+  const bearDebate = debates.find((d) => d.side === "bear");
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -178,50 +261,82 @@ export default function Home() {
           </div>
         )}
 
-        {round1.length > 0 && (
+        {phase1.length > 0 && (
           <div className="mt-8">
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-              Round 1 — Independent Analysis
-            </h2>
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                Phase 1 — Independent Analysis
+              </h2>
+              {phase1.length === 8 && (
+                <div className="flex gap-1.5">
+                  <span className="text-xs px-1.5 py-0.5 rounded border bg-green-900/30 border-green-800 text-green-400">
+                    {phase1.filter((o) => o.signal === "bullish").length} Bull
+                  </span>
+                  <span className="text-xs px-1.5 py-0.5 rounded border bg-red-900/30 border-red-800 text-red-400">
+                    {phase1.filter((o) => o.signal === "bearish").length} Bear
+                  </span>
+                  <span className="text-xs px-1.5 py-0.5 rounded border bg-yellow-900/30 border-yellow-800 text-yellow-400">
+                    {phase1.filter((o) => o.signal === "neutral").length} Neutral
+                  </span>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {round1.map((output) => (
-                <AgentCard key={`r1-${output.agentId}`} output={output} />
+              {phase1.map((output) => (
+                <div key={`p1-${output.agentId}`} className="relative">
+                  <AgentCard output={output} />
+                  {output.signal && (
+                    <span
+                      className={`absolute top-2 right-14 text-[10px] px-1.5 py-0.5 rounded border font-semibold ${getSignalBadge(output.signal)}`}
+                    >
+                      {output.signal.toUpperCase()}
+                    </span>
+                  )}
+                </div>
               ))}
             </div>
           </div>
         )}
 
-        {round2.length > 0 && (
+        {(bullDebate || bearDebate) && (
           <div className="mt-8">
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-              Round 2 — After Debate
+              Phase 2 — Adversarial Debate
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {round2.map((output) => (
-                <AgentCard key={`r2-${output.agentId}`} output={output} />
-              ))}
+              {bullDebate && <DebateCard debate={bullDebate} />}
+              {bearDebate && <DebateCard debate={bearDebate} />}
             </div>
+          </div>
+        )}
+
+        {verdict && (
+          <div className="mt-8">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+              Phase 3 — Judge Verdict
+            </h2>
+            <VerdictCard verdict={verdict} />
           </div>
         )}
 
         {consensus && (
           <div className="mt-8 space-y-4">
             <ConsensusPanel consensus={consensus} />
-            
+
             {/* Position Sizing Recommendation */}
             {metrics && (
               <div className="bg-indigo-900/30 border border-indigo-800 rounded-xl p-5 mb-4">
                 <h3 className="text-sm font-semibold text-indigo-300 mb-2">포지션 사이징 제안 (Kelly Criterion)</h3>
                 {(() => {
                   // Assume 10M KRW portfolio for demo
-                  const size = computePositionSize(consensus, 10000000, metrics); 
+                  const size = computePositionSize(consensus, 10000000, metrics);
                   return (
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-2xl font-bold text-white max-w-[200px] truncate" title={`추천 비중: ${size.kellyPct}%`}>
                           비중 {size.kellyPct}%
                         </div>
-                        
+
                         {/* Actionable Targets for BUY */}
                         {consensus.signal === "BUY" && consensus.takeProfitPrice && consensus.stopLossPrice && (
                           <div className="mt-3 grid grid-cols-2 gap-3 pb-1 border-b border-indigo-800/50 mb-2">
@@ -235,7 +350,7 @@ export default function Home() {
                             </div>
                           </div>
                         )}
-                        
+
                         <div className="text-xs text-indigo-400 mt-1">{size.reasoning}</div>
                       </div>
                       <div className={`px-3 py-1 rounded-full text-xs font-semibold ${

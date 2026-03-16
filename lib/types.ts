@@ -44,6 +44,23 @@ export interface AgentOutput {
   probability: number;
   reasoning: string;
   round: number;
+  signal?: "bullish" | "bearish" | "neutral";
+}
+
+export interface DebateOutput {
+  side: "bull" | "bear";
+  argument: string;
+  keyPoints: string;
+  round: number; // always 2
+}
+
+export interface JudgeVerdict {
+  probability: number;
+  signal: "BUY" | "CAUTION" | "MONITOR";
+  reasoning: string;
+  dissent: string;
+  confidence: number;
+  round: number; // always 3
 }
 
 export interface ConsensusResult {

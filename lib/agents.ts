@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { StockInput, AgentOutput } from "./types";
+import { StockInput, AgentOutput, DebateOutput, JudgeVerdict } from "./types";
 import { parseAgentResponse } from "./parse-agent";
 
 export const AGENTS = [
@@ -45,18 +45,8 @@ export const AGENTS = [
   },
 ];
 
-function buildPrompt(
-  persona: string,
-  stock: StockInput,
-  priorOutputs?: AgentOutput[]
-): string {
-  const priorContext = priorOutputs
-    ? `\n다른 분석가들의 의견:\n${priorOutputs.map((o) => `[${o.name}] ${o.probability}% — ${o.reasoning}`).join("\n")}\n\n위 의견 참고 후 당신의 관점으로 최종 판단하세요.`
-    : "";
-
+function buildStockContext(stock: StockInput): string {
   const lines: string[] = [
-    persona,
-    "",
     `종목: ${stock.name} (${stock.ticker})`,
     `현재가: ${stock.currentPrice.toLocaleString()}원`,
     `52주: ${stock.week52Low.toLocaleString()}~${stock.week52High.toLocaleString()}원`,
@@ -83,92 +73,335 @@ function buildPrompt(
   if (stock.shortInterestPct != null) flowParts.push(`공매도 ${stock.shortInterestPct}%`);
   lines.push(`수급: ${flowParts.join(" / ")}`);
 
-  // Inject market regime context if available
   if (stock.regimeContext) {
     lines.push("", `시장 환경: ${stock.regimeContext}`);
   }
 
-  // Inject news context if available
   if (stock.newsContext) {
     lines.push("", `최근 뉴스:`, stock.newsContext);
   }
 
   lines.push("", `메모: ${stock.notes || "없음"}`);
 
-  return `${lines.join("\n")}
-${priorContext}
+  return lines.join("\n");
+}
+
+function buildPhase1Prompt(persona: string, stock: StockInput): string {
+  return `${persona}
+
+${buildStockContext(stock)}
 
 [중요 지시사항]
-당신은 방금 부여받은 '전설적인 투자자의 페르소나와 고유의 투자 철학'을 반드시 고수해야 합니다. 
+당신은 방금 부여받은 '전설적인 투자자의 페르소나와 고유의 투자 철학'을 반드시 고수해야 합니다.
 다른 투자자들의 스타일에 타협하지 마시고, 당신만의 철학적 기준에 부합하는지에 따라 확률을 엄격하게 평가하세요.
 
 질문: 당신의 고유한 투자 철학 렌즈로 보았을 때, 이 주식이 향후 3개월 내 현재가 대비 10% 이상 상승할 확률(0-100)?
 
 JSON만 반환:
-{"probability": 숫자, "reasoning": "2-3문장 당신의 페르소나 톤앤매너로 작성된 핵심 근거"}`;
+{"signal": "bullish 또는 bearish 또는 neutral", "probability": 숫자, "reasoning": "2-3문장 당신의 페르소나 톤앤매너로 작성된 핵심 근거"}`;
+}
+
+function buildBullAdvocatePrompt(
+  stock: StockInput,
+  bullishOutputs: AgentOutput[],
+  bearishOutputs: AgentOutput[]
+): string {
+  const bullSummary = bullishOutputs
+    .map((o) => `[${o.name}] ${o.probability}% — ${o.reasoning}`)
+    .join("\n");
+  const bearSummary = bearishOutputs
+    .map((o) => `[${o.name}] ${o.probability}% — ${o.reasoning}`)
+    .join("\n");
+
+  return `당신은 Bull Advocate(강세 변호사)입니다. ${stock.name} (${stock.ticker})에 대한 투자 논쟁에서 강세 측을 대변합니다.
+
+${buildStockContext(stock)}
+
+=== 강세 분석가들의 의견 ===
+${bullSummary || "(강세 분석가 없음 — 당신이 가능한 강세 논거를 직접 구성하세요)"}
+
+=== 약세 분석가들의 의견 ===
+${bearSummary || "(약세 분석가 없음)"}
+
+[임무]
+1. 위 강세 분석들을 종합하여 가장 강력한 매수 논거를 3-5문장으로 구성하세요.
+2. 약세 측 주장을 직접 반박하세요. 그들의 논리에서 약점을 찾아내세요.
+3. 핵심 포인트를 불릿으로 요약하세요.
+
+JSON만 반환:
+{"argument": "3-5문장의 종합 강세 논거 + 약세 반박", "keyPoints": "• 포인트1\\n• 포인트2\\n• 포인트3"}`;
+}
+
+function buildBearAdvocatePrompt(
+  stock: StockInput,
+  bearishOutputs: AgentOutput[],
+  bullishOutputs: AgentOutput[]
+): string {
+  const bearSummary = bearishOutputs
+    .map((o) => `[${o.name}] ${o.probability}% — ${o.reasoning}`)
+    .join("\n");
+  const bullSummary = bullishOutputs
+    .map((o) => `[${o.name}] ${o.probability}% — ${o.reasoning}`)
+    .join("\n");
+
+  return `당신은 Bear Advocate(약세 변호사)입니다. ${stock.name} (${stock.ticker})에 대한 투자 논쟁에서 약세 측을 대변합니다.
+
+${buildStockContext(stock)}
+
+=== 약세 분석가들의 의견 ===
+${bearSummary || "(약세 분석가 없음 — 당신이 가능한 약세 논거를 직접 구성하세요)"}
+
+=== 강세 분석가들의 의견 ===
+${bullSummary || "(강세 분석가 없음)"}
+
+[임무]
+1. 위 약세 분석들을 종합하여 가장 강력한 리스크/매도 논거를 3-5문장으로 구성하세요.
+2. 강세 측 주장을 직접 반박하세요. 그들의 논리에서 약점을 찾아내세요.
+3. 핵심 포인트를 불릿으로 요약하세요.
+
+JSON만 반환:
+{"argument": "3-5문장의 종합 약세 논거 + 강세 반박", "keyPoints": "• 포인트1\\n• 포인트2\\n• 포인트3"}`;
+}
+
+function buildJudgePrompt(
+  stock: StockInput,
+  phase1Outputs: AgentOutput[],
+  bullArgument: DebateOutput,
+  bearArgument: DebateOutput
+): string {
+  const analysesSummary = phase1Outputs
+    .map((o) => `[${o.name}] ${o.signal} ${o.probability}% — ${o.reasoning}`)
+    .join("\n");
+
+  return `당신은 Chairman Judge(의장 심판)입니다. 8명의 전설적인 투자자들의 독립 분석과 Bull/Bear 변호사들의 논쟁을 모두 검토한 후, ${stock.name} (${stock.ticker})에 대한 최종 판결을 내립니다.
+
+${buildStockContext(stock)}
+
+=== Phase 1: 8명의 독립 분석 ===
+${analysesSummary}
+
+=== Phase 2: Bull Advocate 주장 ===
+${bullArgument.argument}
+핵심 포인트:
+${bullArgument.keyPoints}
+
+=== Phase 2: Bear Advocate 주장 ===
+${bearArgument.argument}
+핵심 포인트:
+${bearArgument.keyPoints}
+
+[중요 지시사항]
+- 모든 증거를 종합하여 최종 판결을 내리세요.
+- MONITOR를 안전한 타협안으로 선택하지 마세요. 증거가 한 방향을 가리키면 그 방향으로 판결하세요.
+- 반대 의견(dissent)에서 가장 강력한 반론을 인정하세요 — 이것이 판결의 신뢰도를 높입니다.
+- confidence는 판결에 대한 확신 수준(0-100)입니다. 증거가 명확할수록 높게, 양쪽이 팽팽하면 낮게.
+
+질문: 이 주식이 향후 3개월 내 현재가 대비 10% 이상 상승할 확률은?
+
+JSON만 반환:
+{"probability": 숫자, "signal": "BUY 또는 CAUTION 또는 MONITOR", "reasoning": "3-5문장의 최종 판결 근거", "dissent": "가장 강력한 반론 1-2문장", "confidence": 숫자}`;
+}
+
+function classifySignal(probability: number): "bullish" | "bearish" | "neutral" {
+  if (probability >= 60) return "bullish";
+  if (probability < 40) return "bearish";
+  return "neutral";
+}
+
+function parseDebateResponse(raw: string): { argument: string; keyPoints: string } {
+  let text = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+  try {
+    const obj = JSON.parse(text);
+    return {
+      argument: String(obj.argument || "논거 없음"),
+      keyPoints: String(obj.keyPoints || ""),
+    };
+  } catch {
+    // Try to find JSON in text
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const obj = JSON.parse(jsonMatch[0]);
+        return {
+          argument: String(obj.argument || "논거 없음"),
+          keyPoints: String(obj.keyPoints || ""),
+        };
+      } catch {
+        // fall through
+      }
+    }
+    return { argument: text, keyPoints: "" };
+  }
+}
+
+function parseJudgeResponse(raw: string): {
+  probability: number;
+  signal: "BUY" | "CAUTION" | "MONITOR";
+  reasoning: string;
+  dissent: string;
+  confidence: number;
+} {
+  let text = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+  const defaults = {
+    probability: 50,
+    signal: "MONITOR" as const,
+    reasoning: "판결 근거 없음",
+    dissent: "반론 없음",
+    confidence: 50,
+  };
+
+  try {
+    const obj = JSON.parse(text);
+    return {
+      probability: Math.max(0, Math.min(100, Number(obj.probability) || 50)),
+      signal: (["BUY", "CAUTION", "MONITOR"].includes(obj.signal) ? obj.signal : "MONITOR") as "BUY" | "CAUTION" | "MONITOR",
+      reasoning: String(obj.reasoning || defaults.reasoning),
+      dissent: String(obj.dissent || defaults.dissent),
+      confidence: Math.max(0, Math.min(100, Number(obj.confidence) || 50)),
+    };
+  } catch {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const obj = JSON.parse(jsonMatch[0]);
+        return {
+          probability: Math.max(0, Math.min(100, Number(obj.probability) || 50)),
+          signal: (["BUY", "CAUTION", "MONITOR"].includes(obj.signal) ? obj.signal : "MONITOR") as "BUY" | "CAUTION" | "MONITOR",
+          reasoning: String(obj.reasoning || defaults.reasoning),
+          dissent: String(obj.dissent || defaults.dissent),
+          confidence: Math.max(0, Math.min(100, Number(obj.confidence) || 50)),
+        };
+      } catch {
+        // fall through
+      }
+    }
+    return defaults;
+  }
+}
+
+export interface SwarmResult {
+  phase1: AgentOutput[];
+  debate: { bull: DebateOutput; bear: DebateOutput };
+  verdict: JudgeVerdict;
 }
 
 export async function runSwarm(
   stock: StockInput,
-  onAgentComplete?: (output: AgentOutput) => void
-): Promise<AgentOutput[]> {
+  onAgentComplete?: (output: AgentOutput) => void,
+  onDebateComplete?: (output: DebateOutput) => void,
+  onVerdictComplete?: (verdict: JudgeVerdict) => void
+): Promise<SwarmResult> {
   const client = new Anthropic();
 
-  // Round 1: All agents in parallel
-  const round1 = await Promise.all(
+  // Phase 1: All agents analyze independently in parallel
+  const phase1 = await Promise.all(
     AGENTS.map(async (agent) => {
       const persona = stock.evolvedPersonas?.[agent.id] || agent.persona;
       const res = await client.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 300,
         messages: [
-          { role: "user", content: buildPrompt(persona, stock) },
+          { role: "user", content: buildPhase1Prompt(persona, stock) },
         ],
       });
       const parsed = parseAgentResponse(
         (res.content[0] as { type: "text"; text: string }).text
       );
+      const prob = Math.max(0, Math.min(100, parsed.probability));
       const output: AgentOutput = {
         agentId: agent.id,
         name: agent.name,
-        probability: Math.max(0, Math.min(100, parsed.probability)),
+        probability: prob,
         reasoning: parsed.reasoning,
         round: 1,
+        signal: classifySignal(prob),
       };
       onAgentComplete?.(output);
       return output;
     })
   );
 
-  // Round 2: Each agent sees the others' Round 1 outputs
-  const round2 = await Promise.all(
-    AGENTS.map(async (agent) => {
-      const persona = stock.evolvedPersonas?.[agent.id] || agent.persona;
-      const otherOutputs = round1.filter((o) => o.agentId !== agent.id);
-      const res = await client.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 300,
-        messages: [
-          {
-            role: "user",
-            content: buildPrompt(persona, stock, otherOutputs),
-          },
-        ],
-      });
-      const parsed = parseAgentResponse(
-        (res.content[0] as { type: "text"; text: string }).text
-      );
-      const output: AgentOutput = {
-        agentId: agent.id,
-        name: agent.name,
-        probability: Math.max(0, Math.min(100, parsed.probability)),
-        reasoning: parsed.reasoning,
-        round: 2,
-      };
-      onAgentComplete?.(output);
-      return output;
-    })
-  );
+  // Classify into camps
+  const bullishOutputs = phase1.filter((o) => o.signal === "bullish");
+  const bearishOutputs = phase1.filter((o) => o.signal === "bearish");
+  const neutralOutputs = phase1.filter((o) => o.signal === "neutral");
 
-  return round2;
+  // Phase 2: Adversarial Debate (Bull & Bear advocates in parallel)
+  const [bullRes, bearRes] = await Promise.all([
+    client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 500,
+      messages: [
+        {
+          role: "user",
+          content: buildBullAdvocatePrompt(stock, [...bullishOutputs, ...neutralOutputs], bearishOutputs),
+        },
+      ],
+    }),
+    client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 500,
+      messages: [
+        {
+          role: "user",
+          content: buildBearAdvocatePrompt(stock, [...bearishOutputs, ...neutralOutputs], bullishOutputs),
+        },
+      ],
+    }),
+  ]);
+
+  const bullParsed = parseDebateResponse(
+    (bullRes.content[0] as { type: "text"; text: string }).text
+  );
+  const bullDebate: DebateOutput = {
+    side: "bull",
+    argument: bullParsed.argument,
+    keyPoints: bullParsed.keyPoints,
+    round: 2,
+  };
+  onDebateComplete?.(bullDebate);
+
+  const bearParsed = parseDebateResponse(
+    (bearRes.content[0] as { type: "text"; text: string }).text
+  );
+  const bearDebate: DebateOutput = {
+    side: "bear",
+    argument: bearParsed.argument,
+    keyPoints: bearParsed.keyPoints,
+    round: 2,
+  };
+  onDebateComplete?.(bearDebate);
+
+  // Phase 3: Judge renders final verdict
+  const judgeRes = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 500,
+    messages: [
+      {
+        role: "user",
+        content: buildJudgePrompt(stock, phase1, bullDebate, bearDebate),
+      },
+    ],
+  });
+
+  const judgeParsed = parseJudgeResponse(
+    (judgeRes.content[0] as { type: "text"; text: string }).text
+  );
+  const verdict: JudgeVerdict = {
+    probability: judgeParsed.probability,
+    signal: judgeParsed.signal,
+    reasoning: judgeParsed.reasoning,
+    dissent: judgeParsed.dissent,
+    confidence: judgeParsed.confidence,
+    round: 3,
+  };
+  onVerdictComplete?.(verdict);
+
+  return {
+    phase1,
+    debate: { bull: bullDebate, bear: bearDebate },
+    verdict,
+  };
 }

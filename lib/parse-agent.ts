@@ -5,6 +5,7 @@
 export function parseAgentResponse(raw: string): {
   probability: number;
   reasoning: string;
+  signal?: string;
 } {
   let text = raw
     .replace(/```json/gi, "")
@@ -17,6 +18,7 @@ export function parseAgentResponse(raw: string): {
     return {
       probability: Number(obj.probability) || 50,
       reasoning: String(obj.reasoning || "분석 근거 없음"),
+      signal: obj.signal || undefined,
     };
   } catch {
     // Fall through to regex extraction
@@ -30,6 +32,7 @@ export function parseAgentResponse(raw: string): {
       return {
         probability: Number(obj.probability) || 50,
         reasoning: String(obj.reasoning || "분석 근거 없음"),
+        signal: obj.signal || undefined,
       };
     } catch {
       // Fall through
