@@ -66,7 +66,7 @@ ${candidatesText}
 
     // Stream the response to give the user immediate feedback that the committee is "debating"
     const stream = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-latest",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 1500,
       temperature: 0.2, // Low temperature for consistent JSON
       system: systemPrompt,
