@@ -80,8 +80,12 @@ export default function RecommendPage() {
   // Safe parsing helper since LLM might output raw JSON or wrapped in markdown
   const parseResult = (text: string) => {
     try {
-      const cleaned = text.replace(/```json\n?/, "").replace(/```$/, "").trim();
-      return JSON.parse(cleaned);
+      const start = text.indexOf("{");
+      const end = text.lastIndexOf("}");
+      if (start !== -1 && end !== -1 && end > start) {
+        return JSON.parse(text.substring(start, end + 1));
+      }
+      return null;
     } catch {
       return null;
     }
@@ -177,69 +181,78 @@ export default function RecommendPage() {
           </div>
         )}
 
-        {/* Final Rendered Result */}
-        {phase === "done" && parsed && (
-          <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 border border-indigo-800 rounded-2xl p-8 shadow-xl">
-            <div className="text-xs font-bold text-amber-500 uppercase tracking-wider mb-2">
-              Mastermind Top Pick
-            </div>
-            <div className="flex items-baseline justify-between mb-6">
-              <h2 className="text-4xl font-extrabold text-white">
-                {parsed.recommendedName}{" "}
-                <span className="text-xl text-gray-500 font-medium">
-                  {parsed.recommendedTicker}
-                </span>
-              </h2>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="bg-black/40 rounded-lg p-4 border border-indigo-800/50">
-                <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
-                  강력 매도선 (Stop Loss)
+        {/* Final Rendered Result or Error Fallback */}
+        {phase === "done" && (
+          parsed ? (
+            <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 border border-indigo-800 rounded-2xl p-8 shadow-xl">
+              <div className="text-xs font-bold text-amber-500 uppercase tracking-wider mb-2">
+                Mastermind Top Pick
+              </div>
+              <div className="flex items-baseline justify-between mb-6">
+                <h2 className="text-4xl font-extrabold text-white">
+                  {parsed.recommendedName}{" "}
+                  <span className="text-xl text-gray-500 font-medium">
+                    {parsed.recommendedTicker}
+                  </span>
+                </h2>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="bg-black/40 rounded-lg p-4 border border-indigo-800/50">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                    강력 매도선 (Stop Loss)
+                  </div>
+                  <div className="text-2xl font-bold text-red-400">
+                    {parsed.stopLoss?.toLocaleString()}원
+                  </div>
                 </div>
-                <div className="text-2xl font-bold text-red-400">
-                  {parsed.stopLoss?.toLocaleString()}원
+                <div className="bg-black/40 rounded-lg p-4 border border-indigo-800/50">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                    목표가 (Take Profit)
+                  </div>
+                  <div className="text-2xl font-bold text-emerald-400">
+                    {parsed.targetPrice?.toLocaleString()}원
+                  </div>
                 </div>
               </div>
-              <div className="bg-black/40 rounded-lg p-4 border border-indigo-800/50">
-                <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
-                  목표가 (Take Profit)
-                </div>
-                <div className="text-2xl font-bold text-emerald-400">
-                  {parsed.targetPrice?.toLocaleString()}원
-                </div>
-              </div>
-            </div>
 
-            <div className="mb-8 p-6 bg-indigo-950/40 rounded-xl border border-indigo-800">
-              <h3 className="text-sm font-semibold text-indigo-300 mb-3 flex items-center gap-2">
-                <span>⚖️</span> 위원장 최종 선언
-              </h3>
-              <p className="text-gray-300 leading-relaxed text-sm">
-                {parsed.reasoning}
-              </p>
-            </div>
-
-            {parsed.legendQuotes && parsed.legendQuotes.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
-                  거장들의 Comment
+              <div className="mb-8 p-6 bg-indigo-950/40 rounded-xl border border-indigo-800">
+                <h3 className="text-sm font-semibold text-indigo-300 mb-3 flex items-center gap-2">
+                  <span>⚖️</span> 위원장 최종 선언
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {parsed.legendQuotes.map((q: any, i: number) => (
-                    <div key={i} className="bg-gray-900/80 rounded-lg p-4 border border-gray-800">
-                      <div className="text-xs font-bold text-gray-400 mb-2">
-                        {q.legend}
-                      </div>
-                      <div className="text-sm text-gray-300 italic">
-                        "{q.quote}"
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <p className="text-gray-300 leading-relaxed text-sm">
+                  {parsed.reasoning}
+                </p>
               </div>
-            )}
-          </div>
+
+              {parsed.legendQuotes && parsed.legendQuotes.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
+                    거장들의 Comment
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {parsed.legendQuotes.map((q: any, i: number) => (
+                      <div key={i} className="bg-gray-900/80 rounded-lg p-4 border border-gray-800">
+                        <div className="text-xs font-bold text-gray-400 mb-2">
+                          {q.legend}
+                        </div>
+                        <div className="text-sm text-gray-300 italic">
+                          "{q.quote}"
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+              <h3 className="text-red-400 font-bold mb-4">데이터 파싱 실패 (Raw LLM Output):</h3>
+              <div className="font-mono text-xs text-gray-300 whitespace-pre-wrap">
+                {resultText}
+              </div>
+            </div>
+          )
         )}
       </div>
     </div>

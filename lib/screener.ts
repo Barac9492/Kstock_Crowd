@@ -1,6 +1,26 @@
 import { UniverseStock } from "./universe";
 import { StockInput } from "./types";
 
+function getQuantScore(data: Partial<StockInput>): number {
+  let score = 0;
+  // Momentum: 1M and 3M price changes
+  if (data.priceChange1M) score += data.priceChange1M;
+  if (data.priceChange3M) score += data.priceChange3M * 0.5;
+  
+  // Foreign/Institutional Flow: 3D net buy in ~억 won
+  // For every 100억, add 2 points
+  if (data.foreignNetBuy3D && data.foreignNetBuy3D > 0) {
+    score += data.foreignNetBuy3D / 50; 
+  }
+
+  // Value: Lower PBR adds points (baseline 3)
+  if (data.pbr && data.pbr > 0) {
+    score += (3 - data.pbr) * 5;
+  }
+  
+  return score;
+}
+
 /**
  * Perform a zero-cost quantitative hard screen on the universe.
  * This runs solely on the backend using data fetched from the Naver/Wise APIs (0 LLM cost).
@@ -48,14 +68,14 @@ export async function runHardScreener(
       // If it passes all hurdles, it's a candidate
       candidates.push(data as StockInput);
 
-      // Stop once we have 5 solid candidates to avoid unnecessary fetching
-      if (candidates.length >= 5) break;
-
     } catch (e) {
       console.error(`Screener failed for ${u.ticker}`, e);
     }
   }
 
-  // If we couldn't find 5, just return what we have
-  return candidates;
+  // Sort candidates by quant score descending to get the true strongest stocks
+  candidates.sort((a, b) => getQuantScore(b) - getQuantScore(a));
+
+  // Return exactly the best 5
+  return candidates.slice(0, 5);
 }
