@@ -145,6 +145,12 @@ export default function ScanPage() {
           </div>
           <div className="flex gap-3">
             <Link
+              href="/recommend"
+              className="text-sm font-semibold text-amber-500 hover:text-amber-400 transition-colors"
+            >
+              Recommend
+            </Link>
+            <Link
               href="/portfolio"
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >

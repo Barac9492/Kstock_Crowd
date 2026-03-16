@@ -43,6 +43,12 @@ export default function HistoryPage() {
           <h1 className="text-2xl font-bold">Signal History</h1>
           <div className="flex gap-4">
             <Link
+              href="/recommend"
+              className="text-sm font-semibold text-amber-500 hover:text-amber-400 transition-colors"
+            >
+              Recommend
+            </Link>
+            <Link
               href="/scan"
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
