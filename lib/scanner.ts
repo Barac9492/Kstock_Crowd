@@ -1,8 +1,8 @@
-import { StockInput } from "./types";
+import { StockInput, AgentOutput, ConsensusResult } from "./types";
 import { computeConsensus } from "./consensus";
 import { AGENTS } from "./agents";
 import Anthropic from "@anthropic-ai/sdk";
-import { AgentOutput, ConsensusResult } from "./types";
+import { parseAgentResponse } from "./parse-agent";
 
 export interface ScanResult {
   stock: StockInput;
@@ -73,10 +73,8 @@ async function runSwarmServer(
           { role: "user", content: buildPrompt(agent.persona, stock) },
         ],
       });
-      const parsed = JSON.parse(
+      const parsed = parseAgentResponse(
         (res.content[0] as { type: "text"; text: string }).text
-          .replace(/```json|```/g, "")
-          .trim()
       );
       return {
         agentId: agent.id,
@@ -102,10 +100,8 @@ async function runSwarmServer(
           },
         ],
       });
-      const parsed = JSON.parse(
+      const parsed = parseAgentResponse(
         (res.content[0] as { type: "text"; text: string }).text
-          .replace(/```json|```/g, "")
-          .trim()
       );
       return {
         agentId: agent.id,

@@ -9,6 +9,7 @@ import {
   AgentStats,
   BacktestProgress,
 } from "./backtest-types";
+import { parseAgentResponse } from "./parse-agent";
 
 /**
  * Build the same prompt used by agents.ts — duplicated here to avoid
@@ -63,10 +64,8 @@ async function runSwarmServer(
           { role: "user", content: buildPrompt(agent.persona, stock) },
         ],
       });
-      const parsed = JSON.parse(
+      const parsed = parseAgentResponse(
         (res.content[0] as { type: "text"; text: string }).text
-          .replace(/```json|```/g, "")
-          .trim()
       );
       return {
         agentId: agent.id,
@@ -92,10 +91,8 @@ async function runSwarmServer(
           },
         ],
       });
-      const parsed = JSON.parse(
+      const parsed = parseAgentResponse(
         (res.content[0] as { type: "text"; text: string }).text
-          .replace(/```json|```/g, "")
-          .trim()
       );
       return {
         agentId: agent.id,

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { StockInput, AgentOutput } from "./types";
+import { parseAgentResponse } from "./parse-agent";
 
 export const AGENTS = [
   {
@@ -119,10 +120,8 @@ export async function runSwarm(
           { role: "user", content: buildPrompt(agent.persona, stock) },
         ],
       });
-      const parsed = JSON.parse(
+      const parsed = parseAgentResponse(
         (res.content[0] as { type: "text"; text: string }).text
-          .replace(/```json|```/g, "")
-          .trim()
       );
       const output: AgentOutput = {
         agentId: agent.id,
@@ -150,10 +149,8 @@ export async function runSwarm(
           },
         ],
       });
-      const parsed = JSON.parse(
+      const parsed = parseAgentResponse(
         (res.content[0] as { type: "text"; text: string }).text
-          .replace(/```json|```/g, "")
-          .trim()
       );
       const output: AgentOutput = {
         agentId: agent.id,
