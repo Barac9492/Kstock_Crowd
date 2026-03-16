@@ -217,7 +217,7 @@ async function fetchWisereport(ticker: string): Promise<StockData> {
   return data;
 }
 
-// Scrape Naver Finance main page (EUC-KR) — fallback for ROE and other fields
+// Scrape Naver Finance main page (UTF-8) — primary source for ROE, dividend
 async function fetchMainPage(ticker: string): Promise<StockData> {
   const data: StockData = {};
   try {
@@ -226,9 +226,7 @@ async function fetchMainPage(ticker: string): Promise<StockData> {
       { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
     );
     if (!res.ok) return data;
-
-    const buf = await res.arrayBuffer();
-    const html = new TextDecoder("euc-kr").decode(buf);
+    const html = await res.text();
     const $ = cheerio.load(html);
 
     // Stock name
@@ -239,32 +237,26 @@ async function fetchMainPage(ticker: string): Promise<StockData> {
     const priceEl = $(".no_today .blind");
     if (priceEl.length) data.currentPrice = parseNum(priceEl.first().text());
 
-    // PER, PBR, ROE from aside table
-    $("#aside_invest_tab table tbody tr").each((_, row) => {
-      const label = $(row).find("th").text().trim();
-      const val = $(row).find("td em").first().text().trim();
-      if (label.includes("PER") && val) data.per = parseFloat(val);
-      if (label.includes("PBR") && val) data.pbr = parseFloat(val);
-      if (label.includes("ROE") && val) data.roe = parseFloat(val);
-      if (label.includes("배당수익률") && val) data.dividendYield = parseFloat(val);
-    });
+    // PER, PBR, ROE, dividend from th > strong labels
+    $("tr").each((_, row) => {
+      const label = $(row).find("th strong").text().trim();
+      const val = $(row).find("td").first().text().trim();
+      if (!label || !val) return;
 
-    // 52-week high/low
-    $(".tab_con1 table tbody tr").each((_, row) => {
-      const label = $(row).find("th, .title").text().trim();
-      const val = $(row).find("td .blind, td em").first().text().trim();
-      if (label.includes("52주 최고") && val) data.week52High = parseNum(val);
-      if (label.includes("52주 최저") && val) data.week52Low = parseNum(val);
+      if (label.startsWith("ROE")) {
+        const n = parseFloat(val);
+        if (!isNaN(n)) data.roe = n;
+      } else if (label.startsWith("PER") && label.includes("배")) {
+        const n = parseFloat(val);
+        if (!isNaN(n)) data.per = n;
+      } else if (label.startsWith("PBR") && label.includes("배")) {
+        const n = parseFloat(val);
+        if (!isNaN(n)) data.pbr = n;
+      } else if (label.includes("시가배당률")) {
+        const n = parseFloat(val);
+        if (!isNaN(n)) data.dividendYield = n;
+      }
     });
-
-    // Foreign holding
-    const foreignText = $("table.tb_type1_ifm tbody tr")
-      .filter((_, el) => $(el).text().includes("외국인"))
-      .find("td")
-      .first()
-      .text()
-      .trim();
-    if (foreignText) data.foreignHoldingPct = parseFloat(foreignText);
   } catch {
     // silent
   }
