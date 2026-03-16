@@ -20,14 +20,14 @@ export interface StockInput {
 
   // Flows
   foreignHoldingPct: number;
-  foreignNetBuy3D: number;
-  shortInterestPct: number;
+  foreignNetBuy3D?: number;
+  shortInterestPct?: number;
 
   // Price context
   week52High: number;
   week52Low: number;
-  priceChange1M: number;
-  priceChange3M: number;
+  priceChange1M?: number;
+  priceChange3M?: number;
 
   // Free text
   notes: string;

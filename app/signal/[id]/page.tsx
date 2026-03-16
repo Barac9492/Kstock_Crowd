@@ -113,20 +113,27 @@ export default function SignalDetailPage() {
               <span className="text-gray-500">외국인 보유</span>
               <p className="text-white">{stock.foreignHoldingPct}%</p>
             </div>
-            <div>
-              <span className="text-gray-500">외국인 3일 순매수</span>
-              <p className="text-white">{stock.foreignNetBuy3D}억원</p>
-            </div>
-            <div>
-              <span className="text-gray-500">공매도</span>
-              <p className="text-white">{stock.shortInterestPct}%</p>
-            </div>
-            <div>
-              <span className="text-gray-500">1M / 3M 변동</span>
-              <p className="text-white">
-                {stock.priceChange1M}% / {stock.priceChange3M}%
-              </p>
-            </div>
+            {stock.foreignNetBuy3D != null && (
+              <div>
+                <span className="text-gray-500">외국인 3일 순매수</span>
+                <p className="text-white">{stock.foreignNetBuy3D}억원</p>
+              </div>
+            )}
+            {stock.shortInterestPct != null && (
+              <div>
+                <span className="text-gray-500">공매도</span>
+                <p className="text-white">{stock.shortInterestPct}%</p>
+              </div>
+            )}
+            {(stock.priceChange1M != null || stock.priceChange3M != null) && (
+              <div>
+                <span className="text-gray-500">1M / 3M 변동</span>
+                <p className="text-white">
+                  {stock.priceChange1M != null ? `${stock.priceChange1M}%` : "—"} /{" "}
+                  {stock.priceChange3M != null ? `${stock.priceChange3M}%` : "—"}
+                </p>
+              </div>
+            )}
             <div>
               <span className="text-gray-500">매수/중립/매도</span>
               <p className="text-white">

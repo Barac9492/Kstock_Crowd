@@ -15,8 +15,12 @@ interface StockData {
   holdRatings?: number;
   sellRatings?: number;
   foreignHoldingPct?: number;
+  foreignNetBuy3D?: number;
+  shortInterestPct?: number;
   week52High?: number;
   week52Low?: number;
+  priceChange1M?: number;
+  priceChange3M?: number;
 }
 
 const UA =
@@ -158,6 +162,79 @@ async function fetchIntegration(ticker: string): Promise<StockData> {
   return data;
 }
 
+// Fetch trend data for price changes
+async function fetchTrend(ticker: string): Promise<StockData> {
+  const data: StockData = {};
+  try {
+    const res = await fetch(
+      `https://m.stock.naver.com/api/stock/${ticker}/trend`,
+      { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
+    );
+    if (!res.ok) return data;
+    const json = await res.json();
+
+    // Try to calculate 1M/3M price changes from historical data
+    if (Array.isArray(json) && json.length > 0) {
+      const latest = json[json.length - 1];
+      const latestPrice = parseNum(latest?.closePrice);
+      if (latestPrice) {
+        // Find ~1 month ago (roughly 20 trading days)
+        if (json.length > 20) {
+          const monthAgo = parseNum(json[json.length - 21]?.closePrice);
+          if (monthAgo) {
+            data.priceChange1M = Math.round(((latestPrice - monthAgo) / monthAgo) * 1000) / 10;
+          }
+        }
+        // Find ~3 months ago (roughly 60 trading days)
+        if (json.length > 60) {
+          const threeMonthsAgo = parseNum(json[json.length - 61]?.closePrice);
+          if (threeMonthsAgo) {
+            data.priceChange3M = Math.round(((latestPrice - threeMonthsAgo) / threeMonthsAgo) * 1000) / 10;
+          }
+        }
+      }
+    }
+  } catch {
+    // silent
+  }
+  return data;
+}
+
+// Fetch trading data for foreign net buy and short interest
+async function fetchTrading(ticker: string): Promise<StockData> {
+  const data: StockData = {};
+  try {
+    const res = await fetch(
+      `https://m.stock.naver.com/api/stock/${ticker}/trading`,
+      { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
+    );
+    if (!res.ok) return data;
+    const json = await res.json();
+
+    // Foreign net buy (3 day sum)
+    if (json.foreignBuyVol3d != null) {
+      data.foreignNetBuy3D = parseNum(json.foreignBuyVol3d);
+    } else if (Array.isArray(json.foreignTrend)) {
+      // Sum last 3 days of net buy
+      const recent = json.foreignTrend.slice(-3);
+      const sum = recent.reduce(
+        (acc: number, d: { netBuyVol?: string | number }) =>
+          acc + (parseNum(d.netBuyVol) || 0),
+        0
+      );
+      if (sum !== 0) data.foreignNetBuy3D = Math.round(sum / 100000000); // convert to 억원
+    }
+
+    // Short interest
+    if (json.shortSellingRatio != null) {
+      data.shortInterestPct = parseFloat(String(json.shortSellingRatio));
+    }
+  } catch {
+    // silent
+  }
+  return data;
+}
+
 function parseNum(s: string | number | undefined): number | undefined {
   if (s == null) return undefined;
   const cleaned = String(s).replace(/[,\s원주%]/g, "");
@@ -191,15 +268,17 @@ export async function GET(
   }
 
   // Fetch all sources in parallel
-  const [mobile, main, consensus, integration] = await Promise.all([
+  const [mobile, main, consensus, integration, trend, trading] = await Promise.all([
     fetchMobileApi(ticker),
     fetchMainPage(ticker),
     fetchConsensus(ticker),
     fetchIntegration(ticker),
+    fetchTrend(ticker),
+    fetchTrading(ticker),
   ]);
 
-  // Merge: mobile API first (most reliable), then integration, then HTML scrape, then consensus
-  const result = merge(main, integration, mobile, consensus);
+  // Merge: mobile API first (most reliable), then integration, then HTML scrape, then consensus, then extras
+  const result = merge(main, integration, mobile, consensus, trend, trading);
 
   if (!result.name && !result.currentPrice) {
     return NextResponse.json(

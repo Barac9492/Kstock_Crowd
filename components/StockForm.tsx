@@ -8,236 +8,279 @@ interface StockFormProps {
   disabled?: boolean;
 }
 
-const FIELD_GROUPS = [
+// Fields that have no reliable free API source
+const OPTIONAL_KEYS = new Set([
+  "foreignNetBuy3D",
+  "shortInterestPct",
+  "priceChange1M",
+  "priceChange3M",
+]);
+
+interface FieldDef {
+  key: string;
+  label: string;
+  type: "text" | "number";
+  step?: string;
+  unit?: string;
+}
+
+const DISPLAY_GROUPS: { label: string; fields: FieldDef[] }[] = [
   {
     label: "기본 정보",
     fields: [
-      { key: "ticker", label: "종목코드", placeholder: "005930", type: "text" },
-      { key: "name", label: "종목명", placeholder: "삼성전자", type: "text" },
-      { key: "currentPrice", label: "현재가 (원)", placeholder: "72000", type: "number" },
+      { key: "name", label: "종목명", type: "text" },
+      { key: "currentPrice", label: "현재가", type: "number", unit: "원" },
     ],
   },
   {
     label: "밸류에이션",
     fields: [
-      { key: "pbr", label: "PBR", placeholder: "1.2", type: "number", step: "0.01" },
-      { key: "per", label: "PER", placeholder: "15.3", type: "number", step: "0.1" },
-      { key: "roe", label: "ROE (%)", placeholder: "8.5", type: "number", step: "0.1" },
-      { key: "dividendYield", label: "배당수익률 (%)", placeholder: "2.1", type: "number", step: "0.1" },
+      { key: "pbr", label: "PBR", type: "number", step: "0.01", unit: "x" },
+      { key: "per", label: "PER", type: "number", step: "0.1", unit: "x" },
+      { key: "roe", label: "ROE", type: "number", step: "0.1", unit: "%" },
+      { key: "dividendYield", label: "배당수익률", type: "number", step: "0.1", unit: "%" },
     ],
   },
   {
     label: "애널리스트 컨센서스",
     fields: [
-      { key: "avgTargetPrice", label: "평균 목표가", placeholder: "85000", type: "number" },
-      { key: "highTargetPrice", label: "최고 목표가", placeholder: "95000", type: "number" },
-      { key: "lowTargetPrice", label: "최저 목표가", placeholder: "75000", type: "number" },
-      { key: "buyRatings", label: "매수 의견", placeholder: "20", type: "number" },
-      { key: "holdRatings", label: "중립 의견", placeholder: "5", type: "number" },
-      { key: "sellRatings", label: "매도 의견", placeholder: "1", type: "number" },
+      { key: "avgTargetPrice", label: "평균 목표가", type: "number", unit: "원" },
+      { key: "highTargetPrice", label: "최고 목표가", type: "number", unit: "원" },
+      { key: "lowTargetPrice", label: "최저 목표가", type: "number", unit: "원" },
+      { key: "buyRatings", label: "매수 의견", type: "number" },
+      { key: "holdRatings", label: "중립 의견", type: "number" },
+      { key: "sellRatings", label: "매도 의견", type: "number" },
     ],
   },
   {
     label: "수급",
     fields: [
-      { key: "foreignHoldingPct", label: "외국인 보유율 (%)", placeholder: "52.3", type: "number", step: "0.1" },
-      { key: "foreignNetBuy3D", label: "외국인 3일 순매수 (억원)", placeholder: "500", type: "number" },
-      { key: "shortInterestPct", label: "공매도 비율 (%)", placeholder: "1.5", type: "number", step: "0.1" },
+      { key: "foreignHoldingPct", label: "외국인 보유율", type: "number", step: "0.1", unit: "%" },
+      { key: "foreignNetBuy3D", label: "외국인 3일 순매수", type: "number", unit: "억원" },
+      { key: "shortInterestPct", label: "공매도 비율", type: "number", step: "0.1", unit: "%" },
     ],
   },
   {
     label: "가격 흐름",
     fields: [
-      { key: "week52High", label: "52주 최고", placeholder: "88000", type: "number" },
-      { key: "week52Low", label: "52주 최저", placeholder: "55000", type: "number" },
-      { key: "priceChange1M", label: "1개월 변동률 (%)", placeholder: "-3.2", type: "number", step: "0.1" },
-      { key: "priceChange3M", label: "3개월 변동률 (%)", placeholder: "5.1", type: "number", step: "0.1" },
+      { key: "week52High", label: "52주 최고", type: "number", unit: "원" },
+      { key: "week52Low", label: "52주 최저", type: "number", unit: "원" },
+      { key: "priceChange1M", label: "1개월 변동률", type: "number", step: "0.1", unit: "%" },
+      { key: "priceChange3M", label: "3개월 변동률", type: "number", step: "0.1", unit: "%" },
     ],
   },
-] as const;
-
-const INITIAL_STATE: Record<string, string> = {
-  ticker: "",
-  name: "",
-  currentPrice: "",
-  pbr: "",
-  per: "",
-  roe: "",
-  dividendYield: "",
-  avgTargetPrice: "",
-  highTargetPrice: "",
-  lowTargetPrice: "",
-  buyRatings: "",
-  holdRatings: "",
-  sellRatings: "",
-  foreignHoldingPct: "",
-  foreignNetBuy3D: "",
-  shortInterestPct: "",
-  week52High: "",
-  week52Low: "",
-  priceChange1M: "",
-  priceChange3M: "",
-  notes: "",
-};
+];
 
 export default function StockForm({ onSubmit, disabled }: StockFormProps) {
-  const [form, setForm] = useState(INITIAL_STATE);
+  const [ticker, setTicker] = useState("");
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
-
-  const handleChange = (key: string, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
+  // null = phase 1, object = phase 2
+  const [fetchedData, setFetchedData] = useState<Record<string, string> | null>(null);
+  // Track which fields are being edited (click-to-edit)
+  const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
+  const [notes, setNotes] = useState("");
 
   const handleFetch = useCallback(async () => {
-    const ticker = form.ticker.trim();
-    if (!ticker) return;
+    const t = ticker.trim();
+    if (!t) return;
     setFetching(true);
     setFetchError("");
     try {
-      const res = await fetch(`/api/stock/${ticker}`);
+      const res = await fetch(`/api/stock/${t}`);
       const json = await res.json();
       if (!res.ok) {
         setFetchError(json.error || "조회 실패");
         return;
       }
-      setForm((prev) => {
-        const next = { ...prev };
-        for (const [key, val] of Object.entries(json)) {
-          if (val != null && key in next) {
-            next[key] = String(val);
-          }
-        }
-        return next;
-      });
+      const data: Record<string, string> = { ticker: t };
+      for (const [key, val] of Object.entries(json)) {
+        if (val != null) data[key] = String(val);
+      }
+      setFetchedData(data);
+      setEditingFields(new Set());
     } catch {
       setFetchError("네트워크 오류");
     } finally {
       setFetching(false);
     }
-  }, [form.ticker]);
+  }, [ticker]);
+
+  const handleFieldChange = (key: string, value: string) => {
+    setFetchedData((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
+
+  const startEditing = (key: string) => {
+    setEditingFields((prev) => new Set(prev).add(key));
+  };
+
+  const handleReset = () => {
+    setFetchedData(null);
+    setEditingFields(new Set());
+    setNotes("");
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!fetchedData) return;
+
+    const d = fetchedData;
     const stock: StockInput = {
-      ticker: form.ticker,
-      name: form.name,
-      currentPrice: Number(form.currentPrice),
-      pbr: Number(form.pbr),
-      per: Number(form.per),
-      roe: Number(form.roe),
-      dividendYield: Number(form.dividendYield),
-      avgTargetPrice: Number(form.avgTargetPrice),
-      highTargetPrice: Number(form.highTargetPrice),
-      lowTargetPrice: Number(form.lowTargetPrice),
-      buyRatings: Number(form.buyRatings),
-      holdRatings: Number(form.holdRatings),
-      sellRatings: Number(form.sellRatings),
-      foreignHoldingPct: Number(form.foreignHoldingPct),
-      foreignNetBuy3D: Number(form.foreignNetBuy3D),
-      shortInterestPct: Number(form.shortInterestPct),
-      week52High: Number(form.week52High),
-      week52Low: Number(form.week52Low),
-      priceChange1M: Number(form.priceChange1M),
-      priceChange3M: Number(form.priceChange3M),
-      notes: form.notes,
+      ticker: d.ticker || ticker.trim(),
+      name: d.name || "",
+      currentPrice: Number(d.currentPrice) || 0,
+      pbr: Number(d.pbr) || 0,
+      per: Number(d.per) || 0,
+      roe: Number(d.roe) || 0,
+      dividendYield: Number(d.dividendYield) || 0,
+      avgTargetPrice: Number(d.avgTargetPrice) || 0,
+      highTargetPrice: Number(d.highTargetPrice) || 0,
+      lowTargetPrice: Number(d.lowTargetPrice) || 0,
+      buyRatings: Number(d.buyRatings) || 0,
+      holdRatings: Number(d.holdRatings) || 0,
+      sellRatings: Number(d.sellRatings) || 0,
+      foreignHoldingPct: Number(d.foreignHoldingPct) || 0,
+      week52High: Number(d.week52High) || 0,
+      week52Low: Number(d.week52Low) || 0,
+      notes: notes,
     };
+
+    // Only include optional fields if they have values
+    if (d.foreignNetBuy3D) stock.foreignNetBuy3D = Number(d.foreignNetBuy3D);
+    if (d.shortInterestPct) stock.shortInterestPct = Number(d.shortInterestPct);
+    if (d.priceChange1M) stock.priceChange1M = Number(d.priceChange1M);
+    if (d.priceChange3M) stock.priceChange3M = Number(d.priceChange3M);
+
     onSubmit(stock);
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Ticker + 조회 button */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
-          기본 정보
-        </h3>
-        <div className="flex gap-2 mb-3">
-          <div className="flex-1">
-            <label className="block text-xs text-gray-500 mb-1">종목코드</label>
-            <input
-              type="text"
-              placeholder="005930"
-              value={form.ticker}
-              onChange={(e) => handleChange("ticker", e.target.value)}
-              required
-              disabled={disabled}
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={handleFetch}
-              disabled={disabled || fetching || !form.ticker.trim()}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
-            >
-              {fetching ? "조회 중..." : "조회"}
-            </button>
-          </div>
+  // Phase 1: Ticker input only
+  if (!fetchedData) {
+    return (
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="종목코드 입력 (예: 005930)"
+            value={ticker}
+            onChange={(e) => setTicker(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleFetch();
+              }
+            }}
+            disabled={disabled || fetching}
+            className="flex-1 px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white text-lg placeholder-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={handleFetch}
+            disabled={disabled || fetching || !ticker.trim()}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors whitespace-nowrap"
+          >
+            {fetching ? "조회 중..." : "조회"}
+          </button>
         </div>
         {fetchError && (
-          <p className="text-red-400 text-xs mb-2">{fetchError}</p>
+          <p className="text-red-400 text-sm">{fetchError}</p>
         )}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {/* Remaining 기본 정보 fields (name, currentPrice) */}
-          {FIELD_GROUPS[0].fields
-            .filter((f) => f.key !== "ticker")
-            .map((field) => (
-              <div key={field.key}>
-                <label className="block text-xs text-gray-500 mb-1">
-                  {field.label}
-                </label>
-                <input
-                  type={field.type}
-                  placeholder={field.placeholder}
-                  value={form[field.key]}
-                  onChange={(e) => handleChange(field.key, e.target.value)}
-                  required
-                  disabled={disabled}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-                />
-              </div>
-            ))}
+      </div>
+    );
+  }
+
+  // Phase 2: Review fetched data
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Header with stock name and reset button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white">
+            {fetchedData.name}{" "}
+            <span className="text-gray-500 text-base">{fetchedData.ticker}</span>
+          </h2>
         </div>
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={disabled}
+          className="px-3 py-1.5 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg transition-colors"
+        >
+          다시 조회
+        </button>
       </div>
 
-      {/* Remaining field groups (skip 기본 정보 since rendered above) */}
-      {FIELD_GROUPS.slice(1).map((group) => (
+      {/* Data groups */}
+      {DISPLAY_GROUPS.map((group) => (
         <div key={group.label}>
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
             {group.label}
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {group.fields.map((field) => (
-              <div key={field.key}>
-                <label className="block text-xs text-gray-500 mb-1">
-                  {field.label}
-                </label>
-                <input
-                  type={field.type}
-                  step={"step" in field ? field.step : undefined}
-                  placeholder={field.placeholder}
-                  value={form[field.key]}
-                  onChange={(e) => handleChange(field.key, e.target.value)}
-                  required
-                  disabled={disabled}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-                />
-              </div>
-            ))}
+            {group.fields.map((field) => {
+              const value = fetchedData[field.key] || "";
+              const isOptional = OPTIONAL_KEYS.has(field.key);
+              const isMissing = !value;
+              const isEditing = editingFields.has(field.key) || (isOptional && isMissing);
+
+              if (isEditing || (isOptional && isMissing)) {
+                // Editable input for missing optional fields or click-to-edit
+                return (
+                  <div key={field.key}>
+                    <label className="block text-xs text-gray-500 mb-1">
+                      {field.label}
+                      {isOptional && (
+                        <span className="text-amber-500 ml-1">(선택)</span>
+                      )}
+                    </label>
+                    <input
+                      type={field.type}
+                      step={field.step}
+                      placeholder={isOptional ? "미확인" : "입력"}
+                      value={value}
+                      onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                      disabled={disabled}
+                      className={`w-full px-3 py-2 bg-gray-900 border rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50 ${
+                        isOptional && isMissing
+                          ? "border-amber-600/50"
+                          : "border-gray-700"
+                      }`}
+                    />
+                  </div>
+                );
+              }
+
+              // Read-only display (click to edit)
+              return (
+                <div
+                  key={field.key}
+                  onClick={() => !disabled && startEditing(field.key)}
+                  className="cursor-pointer group"
+                >
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {field.label}
+                  </label>
+                  <div className="px-3 py-2 bg-gray-900/50 border border-gray-800 rounded-lg text-sm text-white group-hover:border-gray-600 transition-colors">
+                    {field.type === "number" && (field.unit === "원")
+                      ? `${Number(value).toLocaleString()}${field.unit}`
+                      : `${value}${field.unit || ""}`}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
 
+      {/* Notes */}
       <div>
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
           메모
         </h3>
         <textarea
           placeholder="뉴스, 이슈, 특이사항 등 자유롭게 입력..."
-          value={form.notes}
-          onChange={(e) => handleChange("notes", e.target.value)}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
           disabled={disabled}
           rows={3}
           className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"

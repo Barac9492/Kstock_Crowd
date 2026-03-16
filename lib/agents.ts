@@ -53,21 +53,38 @@ function buildPrompt(
     ? `\n다른 분석가들의 의견:\n${priorOutputs.map((o) => `[${o.name}] ${o.probability}% — ${o.reasoning}`).join("\n")}\n\n위 의견 참고 후 당신의 관점으로 최종 판단하세요.`
     : "";
 
-  return `${persona}
+  const lines: string[] = [
+    persona,
+    "",
+    `종목: ${stock.name} (${stock.ticker})`,
+    `현재가: ${stock.currentPrice.toLocaleString()}원`,
+    `52주: ${stock.week52Low.toLocaleString()}~${stock.week52High.toLocaleString()}원`,
+  ];
 
-종목: ${stock.name} (${stock.ticker})
-현재가: ${stock.currentPrice.toLocaleString()}원
-52주: ${stock.week52Low.toLocaleString()}~${stock.week52High.toLocaleString()}원
-최근: 1개월 ${stock.priceChange1M}% / 3개월 ${stock.priceChange3M}%
+  if (stock.priceChange1M != null || stock.priceChange3M != null) {
+    const parts: string[] = [];
+    if (stock.priceChange1M != null) parts.push(`1개월 ${stock.priceChange1M}%`);
+    if (stock.priceChange3M != null) parts.push(`3개월 ${stock.priceChange3M}%`);
+    lines.push(`최근: ${parts.join(" / ")}`);
+  }
 
-밸류에이션: PBR ${stock.pbr}x / PER ${stock.per}x / ROE ${stock.roe}% / 배당 ${stock.dividendYield}%
+  lines.push(
+    "",
+    `밸류에이션: PBR ${stock.pbr}x / PER ${stock.per}x / ROE ${stock.roe}% / 배당 ${stock.dividendYield}%`,
+    "",
+    `애널리스트: 매수 ${stock.buyRatings} / 중립 ${stock.holdRatings} / 매도 ${stock.sellRatings}`,
+    `평균 목표가: ${stock.avgTargetPrice.toLocaleString()}원 (최고 ${stock.highTargetPrice.toLocaleString()} / 최저 ${stock.lowTargetPrice.toLocaleString()})`,
+    "",
+  );
 
-애널리스트: 매수 ${stock.buyRatings} / 중립 ${stock.holdRatings} / 매도 ${stock.sellRatings}
-평균 목표가: ${stock.avgTargetPrice.toLocaleString()}원 (최고 ${stock.highTargetPrice.toLocaleString()} / 최저 ${stock.lowTargetPrice.toLocaleString()})
+  const flowParts = [`외국인 보유 ${stock.foreignHoldingPct}%`];
+  if (stock.foreignNetBuy3D != null) flowParts.push(`3일 순매수 ${stock.foreignNetBuy3D}억원`);
+  if (stock.shortInterestPct != null) flowParts.push(`공매도 ${stock.shortInterestPct}%`);
+  lines.push(`수급: ${flowParts.join(" / ")}`);
 
-수급: 외국인 보유 ${stock.foreignHoldingPct}% / 3일 순매수 ${stock.foreignNetBuy3D}억원 / 공매도 ${stock.shortInterestPct}%
+  lines.push("", `메모: ${stock.notes || "없음"}`);
 
-메모: ${stock.notes || "없음"}
+  return `${lines.join("\n")}
 ${priorContext}
 
 질문: 향후 3개월 내 현재가 대비 10% 이상 상승할 확률(0-100)?
