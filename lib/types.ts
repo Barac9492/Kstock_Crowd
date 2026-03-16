@@ -35,6 +35,7 @@ export interface StockInput {
   // Enrichment context (auto-injected)
   newsContext?: string;
   regimeContext?: string;
+  evolvedPersonas?: Record<string, string>; // agentId -> persona
 }
 
 export interface AgentOutput {

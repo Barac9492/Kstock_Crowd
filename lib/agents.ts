@@ -113,11 +113,12 @@ export async function runSwarm(
   // Round 1: All agents in parallel
   const round1 = await Promise.all(
     AGENTS.map(async (agent) => {
+      const persona = stock.evolvedPersonas?.[agent.id] || agent.persona;
       const res = await client.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 300,
         messages: [
-          { role: "user", content: buildPrompt(agent.persona, stock) },
+          { role: "user", content: buildPrompt(persona, stock) },
         ],
       });
       const parsed = parseAgentResponse(
@@ -138,6 +139,7 @@ export async function runSwarm(
   // Round 2: Each agent sees the others' Round 1 outputs
   const round2 = await Promise.all(
     AGENTS.map(async (agent) => {
+      const persona = stock.evolvedPersonas?.[agent.id] || agent.persona;
       const otherOutputs = round1.filter((o) => o.agentId !== agent.id);
       const res = await client.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -145,7 +147,7 @@ export async function runSwarm(
         messages: [
           {
             role: "user",
-            content: buildPrompt(agent.persona, stock, otherOutputs),
+            content: buildPrompt(persona, stock, otherOutputs),
           },
         ],
       });

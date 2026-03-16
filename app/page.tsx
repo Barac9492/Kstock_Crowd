@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { StockInput, AgentOutput, ConsensusResult } from "@/lib/types";
-import { saveSignal } from "@/lib/storage";
+import { saveSignal, getAllSignals } from "@/lib/storage";
 import { MarketRegimeData } from "@/lib/regime";
+import { computePerformance, computePositionSize, PerformanceMetrics } from "@/lib/analytics";
+import { loadEvolvedAgents } from "@/lib/agent-evolution";
 import StockForm from "@/components/StockForm";
 import AgentCard from "@/components/AgentCard";
 import ConsensusPanel from "@/components/ConsensusPanel";
@@ -17,6 +19,7 @@ export default function Home() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [regime, setRegime] = useState<MarketRegimeData | null>(null);
+  const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
 
   // Auto-fetch market regime on page load
   useEffect(() => {
@@ -26,6 +29,9 @@ export default function Home() {
         if (data.regime) setRegime(data);
       })
       .catch(() => {});
+      
+    // Compute historical metrics for position sizing
+    setMetrics(computePerformance(getAllSignals()));
   }, []);
 
   const handleSubmit = async (input: StockInput) => {
@@ -52,6 +58,15 @@ export default function Home() {
       // Add regime context if available
       if (regime) {
         enriched.regimeContext = `${regime.label} | KOSPI ${regime.kospiLevel.toLocaleString()} (${regime.kospiVsMa != null ? `MA20 대비 ${regime.kospiVsMa > 0 ? '+' : ''}${regime.kospiVsMa}%` : ''}) | 원달러 ${regime.usdkrw.toLocaleString()}원`;
+      }
+
+      // Add evolved personas if available
+      const evolved = loadEvolvedAgents();
+      if (evolved) {
+        enriched.evolvedPersonas = {};
+        evolved.evolvedAgents.forEach((e) => {
+          enriched.evolvedPersonas![e.agentId] = e.evolvedPersona;
+        });
       }
 
       setStock(enriched);
@@ -123,6 +138,12 @@ export default function Home() {
           </div>
           <div className="flex gap-4">
             <Link
+              href="/portfolio"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Portfolio
+            </Link>
+            <Link
               href="/scan"
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
@@ -180,6 +201,35 @@ export default function Home() {
         {consensus && (
           <div className="mt-8 space-y-4">
             <ConsensusPanel consensus={consensus} />
+            
+            {/* Position Sizing Recommendation */}
+            {metrics && (
+              <div className="bg-indigo-900/30 border border-indigo-800 rounded-xl p-5 mb-4">
+                <h3 className="text-sm font-semibold text-indigo-300 mb-2">포지션 사이징 제안 (Kelly Criterion)</h3>
+                {(() => {
+                  // Assume 10M KRW portfolio for demo
+                  const size = computePositionSize(consensus, 10000000, metrics); 
+                  return (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-2xl font-bold text-white max-w-[200px] truncate" title={`추천 비중: ${size.kellyPct}%`}>
+                          비중 {size.kellyPct}%
+                        </div>
+                        <div className="text-xs text-indigo-400 mt-1">{size.reasoning}</div>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        size.confidence === 'high' ? 'bg-emerald-500/20 text-emerald-400' :
+                        size.confidence === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        {size.confidence.toUpperCase()} CONFIDENCE
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             <button
               onClick={handleSave}
               disabled={saved}

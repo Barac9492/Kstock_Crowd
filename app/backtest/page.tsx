@@ -6,6 +6,7 @@ import { BacktestReport, BacktestProgress } from "@/lib/backtest-types";
 import { SavedSignal } from "@/lib/types";
 import { getAllSignals } from "@/lib/storage";
 import { computeWeightsFromBacktest, saveWeights, formatWeight, loadWeights } from "@/lib/agent-weights";
+import { saveEvolvedAgents, EvolutionResult } from "@/lib/agent-evolution";
 import BacktestResults from "@/components/BacktestResults";
 
 export default function BacktestPage() {
@@ -16,6 +17,8 @@ export default function BacktestPage() {
   const [useHistory, setUseHistory] = useState(false);
   const [historySignals, setHistorySignals] = useState<SavedSignal[]>([]);
   const [weightsApplied, setWeightsApplied] = useState(false);
+  const [isEvolving, setIsEvolving] = useState(false);
+  const [evolveResult, setEvolveResult] = useState<EvolutionResult | null>(null);
 
   const handleApplyWeights = useCallback(() => {
     if (!report) return;
@@ -25,6 +28,27 @@ export default function BacktestPage() {
   }, [report]);
 
   const currentWeights = typeof window !== 'undefined' ? loadWeights() : null;
+
+  const handleEvolve = async () => {
+    if (!report) return;
+    setIsEvolving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/evolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report }),
+      });
+      if (!res.ok) throw new Error("Evolution failed");
+      const data = await res.json();
+      saveEvolvedAgents(data);
+      setEvolveResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Evolution error");
+    } finally {
+      setIsEvolving(false);
+    }
+  };
 
   // Load completed signals from history
   const loadHistory = useCallback(() => {
@@ -115,6 +139,12 @@ export default function BacktestPage() {
             </p>
           </div>
           <div className="flex gap-3">
+            <Link
+              href="/portfolio"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Portfolio
+            </Link>
             <Link
               href="/scan"
               className="text-sm text-gray-400 hover:text-white transition-colors"
@@ -323,6 +353,54 @@ export default function BacktestPage() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+
+            {/* Evolve Agents */}
+            <div className="mt-4 bg-purple-900/20 rounded-xl p-6 border border-purple-800/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-purple-300">에이전트 자가 진화 (Self-Evolution)</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    오판 사례를 분석하여 하위 에이전트의 페르소나와 판단 기준을 AI 시뮬레이션으로 교정합니다
+                  </p>
+                </div>
+                <button
+                  onClick={handleEvolve}
+                  disabled={isEvolving || !!evolveResult}
+                  className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    evolveResult
+                      ? "bg-purple-900/50 text-purple-400 border border-purple-700/50 cursor-not-allowed"
+                      : isEvolving
+                        ? "bg-gray-800 text-gray-500 cursor-wait animate-pulse"
+                        : "bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-500/20"
+                  }`}
+                >
+                  {isEvolving ? "진화 중..." : evolveResult ? "✓ 진화 완료" : "초진화 결행 🧬"}
+                </button>
+              </div>
+
+              {evolveResult && (
+                <div className="mt-4 space-y-3">
+                  <div className="text-sm text-purple-400 font-medium mb-3">
+                    {evolveResult.summary}
+                  </div>
+                  {evolveResult.evolvedAgents.map((agent) => (
+                    <div key={agent.agentId} className="bg-gray-900/50 rounded-lg p-3 text-sm border border-gray-800">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold text-white">{agent.originalName}</span>
+                        <span className="text-xs px-2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          Evolved
+                        </span>
+                      </div>
+                      <div className="text-xs text-red-400 mb-1">약점 파악: {agent.weaknesses}</div>
+                      <div className="text-xs text-emerald-400 mb-2">교정 방향: {agent.changes}</div>
+                      <div className="text-xs text-gray-400 bg-black/50 p-2 rounded">
+                        {agent.evolvedPersona}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
