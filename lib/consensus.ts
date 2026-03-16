@@ -2,10 +2,27 @@ import { AgentOutput, StockInput, ConsensusResult } from "./types";
 
 export function computeConsensus(
   outputs: AgentOutput[],
-  stock: StockInput
+  stock: StockInput,
+  weights?: Record<string, number>
 ): ConsensusResult {
   const probs = outputs.map((o) => o.probability);
-  const sp = Math.round(probs.reduce((s, p) => s + p, 0) / probs.length);
+
+  // Weighted or simple average for Swarm Probability
+  let sp: number;
+  if (weights) {
+    const totalWeight = outputs.reduce(
+      (s, o) => s + (weights[o.agentId] ?? 1 / 8),
+      0
+    );
+    sp = Math.round(
+      outputs.reduce(
+        (s, o) => s + o.probability * (weights[o.agentId] ?? 1 / 8),
+        0
+      ) / (totalWeight || 1)
+    );
+  } else {
+    sp = Math.round(probs.reduce((s, p) => s + p, 0) / probs.length);
+  }
 
   // Market-Implied Probability from analyst target spread
   const range = stock.highTargetPrice - stock.lowTargetPrice;

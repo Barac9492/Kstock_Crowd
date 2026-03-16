@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BacktestReport, BacktestProgress } from "@/lib/backtest-types";
 import { SavedSignal } from "@/lib/types";
 import { getAllSignals } from "@/lib/storage";
+import { computeWeightsFromBacktest, saveWeights, formatWeight, loadWeights } from "@/lib/agent-weights";
 import BacktestResults from "@/components/BacktestResults";
 
 export default function BacktestPage() {
@@ -14,6 +15,16 @@ export default function BacktestPage() {
   const [error, setError] = useState<string | null>(null);
   const [useHistory, setUseHistory] = useState(false);
   const [historySignals, setHistorySignals] = useState<SavedSignal[]>([]);
+  const [weightsApplied, setWeightsApplied] = useState(false);
+
+  const handleApplyWeights = useCallback(() => {
+    if (!report) return;
+    const agentWeights = computeWeightsFromBacktest(report);
+    saveWeights(agentWeights);
+    setWeightsApplied(true);
+  }, [report]);
+
+  const currentWeights = typeof window !== 'undefined' ? loadWeights() : null;
 
   // Load completed signals from history
   const loadHistory = useCallback(() => {
@@ -105,10 +116,16 @@ export default function BacktestPage() {
           </div>
           <div className="flex gap-3">
             <Link
+              href="/scan"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Scan
+            </Link>
+            <Link
               href="/"
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
-              New Analysis
+              Analysis
             </Link>
             <Link
               href="/history"
@@ -272,6 +289,43 @@ export default function BacktestPage() {
               </button>
             </div>
             <BacktestResults report={report} />
+
+            {/* Apply Weights */}
+            <div className="mt-8 bg-gray-900/50 rounded-xl p-6 border border-gray-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-white">에이전트 가중치 적용</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    백테스트 결과 기반으로 Brier Score가 낮은(정확한) 에이전트에 더 높은 가중치를 부여합니다
+                  </p>
+                  {currentWeights && currentWeights.source !== 'default' && (
+                    <p className="text-xs text-indigo-400 mt-1">
+                      현재: {currentWeights.source} 기반 가중치 (정확도 {currentWeights.backtestAccuracy}%)
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={handleApplyWeights}
+                  disabled={weightsApplied}
+                  className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${weightsApplied ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/30 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}`}
+                >
+                  {weightsApplied ? '✓ 적용됨' : '가중치 적용'}
+                </button>
+              </div>
+              {weightsApplied && report && (
+                <div className="mt-4 grid grid-cols-4 gap-2">
+                  {report.agentStats.map((stat) => {
+                    const w = computeWeightsFromBacktest(report).weights[stat.agentId] || 0.125;
+                    return (
+                      <div key={stat.agentId} className="text-center bg-gray-800/50 rounded-lg py-2 px-1">
+                        <div className="text-xs text-gray-400 truncate">{stat.name}</div>
+                        <div className="text-sm font-mono text-white">{formatWeight(w)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -82,6 +82,16 @@ function buildPrompt(
   if (stock.shortInterestPct != null) flowParts.push(`공매도 ${stock.shortInterestPct}%`);
   lines.push(`수급: ${flowParts.join(" / ")}`);
 
+  // Inject market regime context if available
+  if (stock.regimeContext) {
+    lines.push("", `시장 환경: ${stock.regimeContext}`);
+  }
+
+  // Inject news context if available
+  if (stock.newsContext) {
+    lines.push("", `최근 뉴스:`, stock.newsContext);
+  }
+
   lines.push("", `메모: ${stock.notes || "없음"}`);
 
   return `${lines.join("\n")}

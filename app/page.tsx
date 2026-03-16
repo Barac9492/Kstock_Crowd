@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { StockInput, AgentOutput, ConsensusResult } from "@/lib/types";
 import { saveSignal } from "@/lib/storage";
+import { MarketRegimeData } from "@/lib/regime";
 import StockForm from "@/components/StockForm";
 import AgentCard from "@/components/AgentCard";
 import ConsensusPanel from "@/components/ConsensusPanel";
@@ -15,6 +16,17 @@ export default function Home() {
   const [stock, setStock] = useState<StockInput | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [regime, setRegime] = useState<MarketRegimeData | null>(null);
+
+  // Auto-fetch market regime on page load
+  useEffect(() => {
+    fetch("/api/regime")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.regime) setRegime(data);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (input: StockInput) => {
     setRunning(true);
@@ -25,10 +37,29 @@ export default function Home() {
     setError(null);
 
     try {
+      // Enrich stock data with news and regime context
+      const enriched = { ...input };
+
+      // Fetch news for this ticker
+      try {
+        const newsRes = await fetch(`/api/news/${input.ticker}`);
+        if (newsRes.ok) {
+          const newsData = await newsRes.json();
+          if (newsData.headlinesText) enriched.newsContext = newsData.headlinesText;
+        }
+      } catch {}
+
+      // Add regime context if available
+      if (regime) {
+        enriched.regimeContext = `${regime.label} | KOSPI ${regime.kospiLevel.toLocaleString()} (${regime.kospiVsMa != null ? `MA20 대비 ${regime.kospiVsMa > 0 ? '+' : ''}${regime.kospiVsMa}%` : ''}) | 원달러 ${regime.usdkrw.toLocaleString()}원`;
+      }
+
+      setStock(enriched);
+
       const res = await fetch("/api/swarm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        body: JSON.stringify(enriched),
       });
 
       const reader = res.body?.getReader();
@@ -82,7 +113,14 @@ export default function Home() {
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold">Swarm</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Swarm</h1>
+            {regime && (
+              <span className="text-xs px-2 py-1 rounded-full bg-gray-800 border border-gray-700">
+                {regime.label}
+              </span>
+            )}
+          </div>
           <div className="flex gap-4">
             <Link
               href="/scan"

@@ -31,6 +31,10 @@ export interface StockInput {
 
   // Free text
   notes: string;
+
+  // Enrichment context (auto-injected)
+  newsContext?: string;
+  regimeContext?: string;
 }
 
 export interface AgentOutput {
