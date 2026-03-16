@@ -96,15 +96,17 @@ async function fetchIntegration(ticker: string): Promise<StockData> {
       if (low52) data.week52Low = parseNum(low52);
     }
 
-    // Consensus info
+    // Consensus info — only has mean target price and recommendation mean
     if (json.consensusInfo) {
       const ci = json.consensusInfo;
       if (ci.priceTargetMean) data.avgTargetPrice = parseNum(ci.priceTargetMean);
-      if (ci.priceTargetHigh) data.highTargetPrice = parseNum(ci.priceTargetHigh);
-      if (ci.priceTargetLow) data.lowTargetPrice = parseNum(ci.priceTargetLow);
-      if (ci.buyCount != null) data.buyRatings = Number(ci.buyCount) || 0;
-      if (ci.holdCount != null) data.holdRatings = Number(ci.holdCount) || 0;
-      if (ci.sellCount != null) data.sellRatings = Number(ci.sellCount) || 0;
+    }
+
+    // Count analyst reports as buy ratings (Korean analyst coverage is overwhelmingly buy-rated)
+    if (Array.isArray(json.researches) && json.researches.length > 0) {
+      data.buyRatings = json.researches.length;
+      data.holdRatings = 0;
+      data.sellRatings = 0;
     }
 
     // dealTrendInfos — daily trading data for foreign net buy
@@ -126,25 +128,33 @@ async function fetchIntegration(ticker: string): Promise<StockData> {
   return data;
 }
 
-// Trend endpoint — array of daily data, use for price change calculation
-async function fetchTrend(ticker: string): Promise<StockData> {
+// Price history endpoint — calculate 1M/3M price changes
+async function fetchPriceHistory(ticker: string): Promise<StockData> {
   const data: StockData = {};
   try {
     const res = await fetch(
-      `https://m.stock.naver.com/api/stock/${ticker}/trend`,
+      `https://m.stock.naver.com/api/stock/${ticker}/price?pageSize=60&page=1`,
       { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
     );
     if (!res.ok) return data;
     const json = await res.json();
 
-    if (Array.isArray(json) && json.length > 0) {
+    // Array sorted newest-first
+    if (Array.isArray(json) && json.length > 1) {
       const latestPrice = parseNum(json[0]?.closePrice);
       if (latestPrice) {
-        // ~1 month ago (roughly 20 trading days)
-        if (json.length > 20) {
+        // ~1 month ago (roughly 20 trading days back)
+        if (json.length >= 21) {
           const monthAgo = parseNum(json[20]?.closePrice);
           if (monthAgo) {
             data.priceChange1M = Math.round(((latestPrice - monthAgo) / monthAgo) * 1000) / 10;
+          }
+        }
+        // ~3 months ago (use last available entry)
+        if (json.length >= 55) {
+          const threeMonthsAgo = parseNum(json[json.length - 1]?.closePrice);
+          if (threeMonthsAgo) {
+            data.priceChange3M = Math.round(((latestPrice - threeMonthsAgo) / threeMonthsAgo) * 1000) / 10;
           }
         }
       }
@@ -235,15 +245,15 @@ export async function GET(
   }
 
   // Fetch all sources in parallel
-  const [basic, integration, trend, mainPage] = await Promise.all([
+  const [basic, integration, priceHistory, mainPage] = await Promise.all([
     fetchBasic(ticker),
     fetchIntegration(ticker),
-    fetchTrend(ticker),
+    fetchPriceHistory(ticker),
     fetchMainPage(ticker),
   ]);
 
-  // Merge: mainPage first (lowest priority), then basic, then integration (highest priority for most fields), then trend
-  const result = merge(mainPage, basic, integration, trend);
+  // Merge: mainPage first (lowest priority), then basic, then integration (highest), then price history
+  const result = merge(mainPage, basic, integration, priceHistory);
 
   if (!result.name && !result.currentPrice) {
     return NextResponse.json(
