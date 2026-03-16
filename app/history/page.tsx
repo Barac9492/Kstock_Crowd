@@ -18,12 +18,20 @@ export default function HistoryPage() {
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">Signal History</h1>
-          <Link
-            href="/"
-            className="text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            New Analysis
-          </Link>
+          <div className="flex gap-4">
+            <Link
+              href="/backtest"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Backtest
+            </Link>
+            <Link
+              href="/"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              New Analysis
+            </Link>
+          </div>
         </div>
 
         <SignalHistory signals={signals} />

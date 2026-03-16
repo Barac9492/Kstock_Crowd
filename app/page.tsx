@@ -57,12 +57,20 @@ export default function Home() {
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">Swarm</h1>
-          <Link
-            href="/history"
-            className="text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            History
-          </Link>
+          <div className="flex gap-4">
+            <Link
+              href="/backtest"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Backtest
+            </Link>
+            <Link
+              href="/history"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              History
+            </Link>
+          </div>
         </div>
 
         <StockForm onSubmit={handleSubmit} disabled={running} />
