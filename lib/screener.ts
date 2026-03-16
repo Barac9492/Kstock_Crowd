@@ -11,8 +11,6 @@ export async function runHardScreener(
   onProgress?: (current: number, total: number, ticker: string) => void
 ): Promise<StockInput[]> {
   const candidates: StockInput[] = [];
-  const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-
   for (let i = 0; i < universe.length; i++) {
     const u = universe[i];
     if (onProgress) {
@@ -21,7 +19,8 @@ export async function runHardScreener(
 
     try {
       // Fetch basic data
-      const res = await fetch(`${BASE_URL}/api/stock/${u.ticker}`, { cache: "no-store" });
+      // Use relative path since this is executed on the client-side
+      const res = await fetch(`/api/stock/${u.ticker}`, { cache: "no-store", headers: { Accept: "application/json" } });
       if (!res.ok) continue;
       const data: Partial<StockInput> = await res.json();
 
