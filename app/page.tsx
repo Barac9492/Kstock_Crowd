@@ -215,6 +215,21 @@ export default function Home() {
                         <div className="text-2xl font-bold text-white max-w-[200px] truncate" title={`추천 비중: ${size.kellyPct}%`}>
                           비중 {size.kellyPct}%
                         </div>
+                        
+                        {/* Actionable Targets for BUY */}
+                        {consensus.signal === "BUY" && consensus.takeProfitPrice && consensus.stopLossPrice && (
+                          <div className="mt-3 grid grid-cols-2 gap-3 pb-1 border-b border-indigo-800/50 mb-2">
+                            <div>
+                               <div className="text-[10px] font-semibold text-indigo-400 uppercase mb-0.5">목표가 (TP)</div>
+                               <div className="text-sm font-bold text-emerald-400">{consensus.takeProfitPrice.toLocaleString()}원</div>
+                            </div>
+                            <div>
+                               <div className="text-[10px] font-semibold text-indigo-400 uppercase mb-0.5">손절가 (SL)</div>
+                               <div className="text-sm font-bold text-red-400">{consensus.stopLossPrice.toLocaleString()}원</div>
+                            </div>
+                          </div>
+                        )}
+                        
                         <div className="text-xs text-indigo-400 mt-1">{size.reasoning}</div>
                       </div>
                       <div className={`px-3 py-1 rounded-full text-xs font-semibold ${

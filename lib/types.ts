@@ -52,6 +52,8 @@ export interface ConsensusResult {
   alphaGap: number;
   conviction: number;
   signal: "BUY" | "CAUTION" | "MONITOR";
+  takeProfitPrice?: number;
+  stopLossPrice?: number;
 }
 
 export interface SavedSignal {

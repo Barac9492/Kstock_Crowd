@@ -33,11 +33,28 @@ function parseNum(s: string | number | undefined): number | undefined {
   return isNaN(n) ? undefined : n;
 }
 
+// Robust fetch with exponential backoff
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+      if (res.status === 404) return res; // Don't retry real 404s
+    } catch (err) {
+      if (attempt === maxRetries - 1) throw err;
+    }
+    attempt++;
+    await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt))); // 1s, 2s, 4s...
+  }
+  throw new Error(`Failed to fetch ${url} after ${maxRetries} attempts`);
+}
+
 // Try Naver mobile JSON API — only has name + price
 async function fetchBasic(ticker: string): Promise<StockData> {
   const data: StockData = {};
   try {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://m.stock.naver.com/api/stock/${ticker}/basic`,
       { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
     );
@@ -56,7 +73,7 @@ async function fetchBasic(ticker: string): Promise<StockData> {
 async function fetchIntegration(ticker: string): Promise<StockData> {
   const data: StockData = {};
   try {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://m.stock.naver.com/api/stock/${ticker}/integration`,
       { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
     );
@@ -125,7 +142,7 @@ async function fetchIntegration(ticker: string): Promise<StockData> {
 async function fetchPriceHistory(ticker: string): Promise<StockData> {
   const data: StockData = {};
   try {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://m.stock.naver.com/api/stock/${ticker}/price?pageSize=60&page=1`,
       { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
     );
@@ -162,7 +179,7 @@ async function fetchPriceHistory(ticker: string): Promise<StockData> {
 async function fetchWisereport(ticker: string): Promise<StockData> {
   const data: StockData = {};
   try {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://navercomp.wisereport.co.kr/v2/company/c1010001.aspx?cmp_cd=${ticker}&cn=`,
       { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
     );
@@ -190,12 +207,12 @@ async function fetchWisereport(ticker: string): Promise<StockData> {
         const target = parseNum(cells[2]);
         if (target) targets.push(target);
 
-        const rating = cells[5].toLowerCase();
-        if (rating.includes("buy") || rating.includes("매수")) {
+        const rating = cells[5].toLowerCase().replace(/\s/g, "");
+        if (rating.includes("buy") || rating.includes("매수") || rating.includes("outperform") || rating.includes("overweight")) {
           buy++;
-        } else if (rating.includes("hold") || rating.includes("중립") || rating.includes("neutral")) {
+        } else if (rating.includes("hold") || rating.includes("중립") || rating.includes("neutral") || rating.includes("marketperform") || rating.includes("equalweight")) {
           hold++;
-        } else if (rating.includes("sell") || rating.includes("매도")) {
+        } else if (rating.includes("sell") || rating.includes("매도") || rating.includes("underperform") || rating.includes("underweight") || rating.includes("reduce")) {
           sell++;
         }
       });
@@ -221,7 +238,7 @@ async function fetchWisereport(ticker: string): Promise<StockData> {
 async function fetchMainPage(ticker: string): Promise<StockData> {
   const data: StockData = {};
   try {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://finance.naver.com/item/main.naver?code=${ticker}`,
       { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
     );
@@ -300,7 +317,7 @@ export async function GET(
   // Merge: mainPage first (lowest priority), then basic, then integration, then wisereport (best for analyst data), then price history
   const result = merge(mainPage, basic, integration, wisereport, priceHistory);
 
-  if (!result.name && !result.currentPrice) {
+  if (!result.currentPrice || !result.name) {
     return NextResponse.json(
       { error: "종목 데이터를 찾을 수 없습니다" },
       { status: 404 }

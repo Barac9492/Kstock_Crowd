@@ -213,8 +213,16 @@ export default function StockForm({ onSubmit, disabled }: StockFormProps) {
       {/* Data groups */}
       {DISPLAY_GROUPS.map((group) => (
         <div key={group.label}>
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
             {group.label}
+            {group.label === "애널리스트 컨센서스" && (
+              <span className="group relative inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-700 text-[10px] text-gray-300 cursor-help">
+                ?
+                <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-gray-800 text-xs text-gray-300 rounded shadow-lg opacity-0 transition-opacity group-hover:opacity-100 z-10">
+                  한국 우량주(대기업)는 증권사 구조상 매도/중립 리포트가 0건인 경우가 흔합니다 (관행적 '매수' 편중).
+                </span>
+              </span>
+            )}
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {group.fields.map((field) => {

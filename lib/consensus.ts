@@ -53,5 +53,18 @@ export function computeConsensus(
         ? "CAUTION"
         : "MONITOR";
 
-  return { sp, mip, alphaGap, conviction, signal };
+  // Actionable Retail Targets (TP / SL) for BUY signals
+  let takeProfitPrice: number | undefined = undefined;
+  let stopLossPrice: number | undefined = undefined;
+
+  if (signal === "BUY" && stock.currentPrice) {
+    // TP upside is bounded between 10% and 30% or the alpha gap
+    const targetUpsidePct = Math.min(30, Math.max(10, alphaGap));
+    takeProfitPrice = Math.round(stock.currentPrice * (1 + targetUpsidePct / 100));
+    // Risk/Reward ratio 1:2 -> Stop loss is half the distance of TP
+    const slDistance = (takeProfitPrice - stock.currentPrice) / 2;
+    stopLossPrice = Math.round(stock.currentPrice - slDistance);
+  }
+
+  return { sp, mip, alphaGap, conviction, signal, takeProfitPrice, stopLossPrice };
 }
