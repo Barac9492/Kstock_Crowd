@@ -50,6 +50,11 @@ export default function RecommendPage() {
         body: JSON.stringify({ candidates: filtered }),
       });
 
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `API returned HTTP ${res.status}`);
+      }
+
       if (!res.body) {
         throw new Error("No response body");
       }
@@ -183,7 +188,7 @@ export default function RecommendPage() {
 
         {/* Final Rendered Result or Error Fallback */}
         {phase === "done" && (
-          parsed ? (
+          parsed && parsed.recommendedTicker ? (
             <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 border border-indigo-800 rounded-2xl p-8 shadow-xl">
               <div className="text-xs font-bold text-amber-500 uppercase tracking-wider mb-2">
                 Mastermind Top Pick
