@@ -28,18 +28,22 @@ export async function runHardScreener(
       if (!data.currentPrice || !data.name) continue;
 
       // HARD QUANTITATIVE FILTERS
-      // 1. Must have positive foreign or institutional momentum (O'Neil/Soros)
+      // 1. Must not have massive foreign sell-off (O'Neil/Soros protection)
+      // Loosen: Instead of > 0, we just avoid heavy dumping (e.g., net buy < -500 indicates > 50B KRW selling)
       const foreignBuy = data.foreignNetBuy3D || 0;
-      if (foreignBuy < 0) continue;
+      if (foreignBuy < -500) continue;
 
       // 2. Must not be outrageously overvalued (Graham/Buffett protection)
+      // Loosen: PBR limit from 3 to 5 to allow solid growth stocks.
       const pbr = data.pbr || 99;
-      if (pbr > 3) continue;
+      if (pbr > 5) continue;
 
-      // 3. Must not be in a massive downtrend (Price > 52W Low + 10%)
-      if (data.week52Low && data.currentPrice < data.week52Low * 1.1) continue;
+      // 3. Must not be in a massive downtrend (Price > 52W Low + 5%)
+      // Loosen: 10% was too tight, 5% cushion above 52W low
+      if (data.week52Low && data.currentPrice < data.week52Low * 1.05) continue;
 
       // 4. Must have some analyst upside (Lynch/Simons)
+      // Loosen: Treat gracefully if avgTargetPrice doesn't exist
       if (data.avgTargetPrice && data.currentPrice >= data.avgTargetPrice) continue;
 
       // If it passes all hurdles, it's a candidate
