@@ -3,8 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { StockInput, AgentOutput, ConsensusResult } from "@/lib/types";
-import { runSwarm } from "@/lib/agents";
-import { computeConsensus } from "@/lib/consensus";
 import { saveSignal } from "@/lib/storage";
 import StockForm from "@/components/StockForm";
 import AgentCard from "@/components/AgentCard";
@@ -27,12 +25,40 @@ export default function Home() {
     setError(null);
 
     try {
-      const outputs = await runSwarm(input, (output) => {
-        setAgentOutputs((prev) => [...prev, output]);
+      const res = await fetch("/api/swarm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
       });
 
-      const result = computeConsensus(outputs, input);
-      setConsensus(result);
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("Stream unavailable");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const match = line.match(/^data: (.+)$/);
+          if (!match) continue;
+          const event = JSON.parse(match[1]);
+
+          if (event.type === "agent") {
+            setAgentOutputs((prev) => [...prev, event.output]);
+          } else if (event.type === "consensus") {
+            setConsensus(event.consensus);
+          } else if (event.type === "error") {
+            setError(event.message);
+          }
+        }
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "분석 중 오류가 발생했습니다."
@@ -58,6 +84,12 @@ export default function Home() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">Swarm</h1>
           <div className="flex gap-4">
+            <Link
+              href="/scan"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Scan
+            </Link>
             <Link
               href="/backtest"
               className="text-sm text-gray-400 hover:text-white transition-colors"

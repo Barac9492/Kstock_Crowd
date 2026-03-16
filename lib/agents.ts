@@ -97,10 +97,7 @@ export async function runSwarm(
   stock: StockInput,
   onAgentComplete?: (output: AgentOutput) => void
 ): Promise<AgentOutput[]> {
-  const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    dangerouslyAllowBrowser: true,
-  });
+  const client = new Anthropic();
 
   // Round 1: All agents in parallel
   const round1 = await Promise.all(
