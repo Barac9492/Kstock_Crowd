@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { SavedSignal } from "@/lib/types";
+import { getAlphaGapColor } from "@/lib/consensus";
 import { UnrealizedPnL } from "@/lib/outcome-tracker";
 
 interface SignalHistoryProps {
@@ -94,7 +95,7 @@ export default function SignalHistory({
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-400">
+                    <span className={`text-sm ${getAlphaGapColor(s.consensus.alphaGap, s.consensus.sp)}`}>
                       SP {s.consensus.sp}% / MIP {s.consensus.mip}% / Gap{" "}
                       {s.consensus.alphaGap > 0 ? "+" : ""}
                       {s.consensus.alphaGap}

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { SavedSignal } from "@/lib/types";
+import { getAlphaGapColor } from "@/lib/consensus";
 import { getAllSignals } from "@/lib/storage";
 import {
   computePerformance,
@@ -202,7 +203,7 @@ export default function PortfolioPage() {
                             ) : (
                               <span className="text-gray-600">-</span>
                             )}
-                            <span className="text-gray-500 text-xs">
+                            <span className={`text-xs ${getAlphaGapColor(s.consensus.alphaGap, s.consensus.sp)}`}>
                               Gap {s.consensus.alphaGap > 0 ? "+" : ""}
                               {s.consensus.alphaGap}
                             </span>

@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import { UNIVERSE, SECTORS, UniverseStock } from "@/lib/universe";
 import { ScanResult, ScanProgress } from "@/lib/scanner";
+import { getAlphaGapColor } from "@/lib/consensus";
 import { saveSignal } from "@/lib/storage";
 
 function getSignalStyle(signal: string) {
@@ -340,13 +341,7 @@ export default function ScanPage() {
                           <span className="text-gray-600 mx-1">·</span>
                           <span className="text-gray-400">Gap</span>{" "}
                           <span
-                            className={
-                              r.consensus.alphaGap > 0
-                                ? "text-emerald-400"
-                                : r.consensus.alphaGap < 0
-                                  ? "text-red-400"
-                                  : "text-gray-400"
-                            }
+                            className={getAlphaGapColor(r.consensus.alphaGap, r.consensus.sp)}
                           >
                             {r.consensus.alphaGap > 0 ? "+" : ""}
                             {r.consensus.alphaGap}

@@ -68,3 +68,16 @@ export function computeConsensus(
 
   return { sp, mip, alphaGap, conviction, signal, takeProfitPrice, stopLossPrice };
 }
+
+export function getAlphaGapColor(alphaGap: number, sp: number): string {
+  if (sp >= 50) {
+    if (alphaGap > 0) return "text-emerald-400";
+    if (alphaGap < 0) return "text-red-400";
+    return "text-gray-400";
+  } else {
+    // If SP is pessimistic (< 50%), a positive gap just means "less pessimistic" than the market,
+    // so it shouldn't be green. But if it's negative, it's "even worse", so keep red.
+    if (alphaGap < 0) return "text-red-400";
+    return "text-gray-400";
+  }
+}

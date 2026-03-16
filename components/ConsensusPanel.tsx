@@ -1,6 +1,7 @@
 "use client";
 
 import { ConsensusResult } from "@/lib/types";
+import { getAlphaGapColor } from "@/lib/consensus";
 
 interface ConsensusPanelProps {
   consensus: ConsensusResult;
@@ -49,7 +50,7 @@ export default function ConsensusPanel({ consensus }: ConsensusPanelProps) {
             Alpha Gap
           </div>
           <div
-            className={`text-3xl font-bold ${alphaGap > 0 ? "text-green-400" : alphaGap < 0 ? "text-red-400" : "text-gray-400"}`}
+            className={`text-3xl font-bold ${getAlphaGapColor(alphaGap, sp)}`}
           >
             {alphaGap > 0 ? "+" : ""}
             {alphaGap}
