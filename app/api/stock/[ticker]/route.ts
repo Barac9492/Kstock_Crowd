@@ -96,17 +96,10 @@ async function fetchIntegration(ticker: string): Promise<StockData> {
       if (low52) data.week52Low = parseNum(low52);
     }
 
-    // Consensus info — only has mean target price and recommendation mean
+    // Consensus info — only has mean target price
     if (json.consensusInfo) {
       const ci = json.consensusInfo;
       if (ci.priceTargetMean) data.avgTargetPrice = parseNum(ci.priceTargetMean);
-    }
-
-    // Count analyst reports as buy ratings (Korean analyst coverage is overwhelmingly buy-rated)
-    if (Array.isArray(json.researches) && json.researches.length > 0) {
-      data.buyRatings = json.researches.length;
-      data.holdRatings = 0;
-      data.sellRatings = 0;
     }
 
     // dealTrendInfos — daily trading data for foreign net buy
@@ -158,6 +151,65 @@ async function fetchPriceHistory(ticker: string): Promise<StockData> {
           }
         }
       }
+    }
+  } catch {
+    // silent
+  }
+  return data;
+}
+
+// Scrape wisereport for analyst target prices and ratings
+async function fetchWisereport(ticker: string): Promise<StockData> {
+  const data: StockData = {};
+  try {
+    const res = await fetch(
+      `https://navercomp.wisereport.co.kr/v2/company/c1010001.aspx?cmp_cd=${ticker}&cn=`,
+      { headers: { "User-Agent": UA }, next: { revalidate: 0 } }
+    );
+    if (!res.ok) return data;
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    // Parse individual analyst report table for target prices and ratings
+    const targets: number[] = [];
+    let buy = 0, hold = 0, sell = 0;
+
+    $("table").each((_, table) => {
+      const headerText = $(table).find("tr").first().text();
+      if (!headerText.includes("제공처") || !headerText.includes("목표가")) return;
+
+      $(table).find("tr").each((j, tr) => {
+        if (j === 0) return; // skip header
+        const cells: string[] = [];
+        $(tr).find("td").each((_, td) => {
+          cells.push($(td).text().trim());
+        });
+        if (cells.length < 6) return;
+
+        // cells: [broker, date, targetPrice, prevTarget, change%, rating, prevRating]
+        const target = parseNum(cells[2]);
+        if (target) targets.push(target);
+
+        const rating = cells[5].toLowerCase();
+        if (rating.includes("buy") || rating.includes("매수")) {
+          buy++;
+        } else if (rating.includes("hold") || rating.includes("중립") || rating.includes("neutral")) {
+          hold++;
+        } else if (rating.includes("sell") || rating.includes("매도")) {
+          sell++;
+        }
+      });
+    });
+
+    if (targets.length > 0) {
+      data.highTargetPrice = Math.max(...targets);
+      data.lowTargetPrice = Math.min(...targets);
+      data.avgTargetPrice = Math.round(targets.reduce((a, b) => a + b, 0) / targets.length);
+    }
+    if (buy + hold + sell > 0) {
+      data.buyRatings = buy;
+      data.holdRatings = hold;
+      data.sellRatings = sell;
     }
   } catch {
     // silent
@@ -245,15 +297,16 @@ export async function GET(
   }
 
   // Fetch all sources in parallel
-  const [basic, integration, priceHistory, mainPage] = await Promise.all([
+  const [basic, integration, priceHistory, mainPage, wisereport] = await Promise.all([
     fetchBasic(ticker),
     fetchIntegration(ticker),
     fetchPriceHistory(ticker),
     fetchMainPage(ticker),
+    fetchWisereport(ticker),
   ]);
 
-  // Merge: mainPage first (lowest priority), then basic, then integration (highest), then price history
-  const result = merge(mainPage, basic, integration, priceHistory);
+  // Merge: mainPage first (lowest priority), then basic, then integration, then wisereport (best for analyst data), then price history
+  const result = merge(mainPage, basic, integration, wisereport, priceHistory);
 
   if (!result.name && !result.currentPrice) {
     return NextResponse.json(
